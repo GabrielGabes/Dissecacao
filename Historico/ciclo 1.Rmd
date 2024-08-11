@@ -1,0 +1,1236 @@
+```{r TRATAMENTO DOS DADOS}
+setwd("C:/Users/gabri/OneDrive/Documentos/Freelances - Medicina - Trabalhos Academicos/Joel - Endoscopia - Dissecação/")
+df <- read_excel("df.xlsx", sheet="Plan1")
+
+df$id = NULL
+df$Paciente = NULL
+df$RGHC = NULL
+df$Data = NULL
+df$observação_sobre_margens = NULL
+df$Paciente = NULL
+df$complicação = NULL
+df$observação = NULL
+df$Primário = NULL
+df$n_dilatacoes = NULL
+df$em_bloco = NULL
+df$estenose_desenv = NULL
+df$estenose_resol_completa = NULL
+
+#glimpse(df)
+
+for (coluna in names(df)){
+  classe = class(df[[coluna]])
+  if (classe == "character"){
+    df[[coluna]] = as.factor(df[[coluna]])
+  }
+  if (classe == "numeric"){
+    quantidade_niveis = length(levels(as.factor(df[[coluna]])))
+    if (quantidade_niveis <= 3){
+      df[[coluna]] = as.factor(df[[coluna]])
+    }
+    else {
+      df[[coluna]] = as.numeric(df[[coluna]])
+    }
+  }
+}
+
+df$grupo = factor(df$grupo, levels=c("oral","injetável"))
+df$localizacao = factor(df$localizacao, levels=c("distal","médio","proximal"))
+df$localizacao <- str_to_title(df$localizacao)
+
+df$n_dilatacoes1_resolveu = ifelse(df$resolveu_estenose == "sim", df$n_dilatacoes1, NA)
+df$n_dilatacoes1_nresolveu = ifelse(df$resolveu_estenose == "não", df$n_dilatacoes1, NA)
+
+df$n_dilatacoes2_resolveu = ifelse(df$resolveu_estenose == "sim", df$n_dilatacoes2, NA)
+df$n_dilatacoes2_nresolveu = ifelse(df$resolveu_estenose == "não", df$n_dilatacoes2, NA)
+
+#glimpse(df)
+nrow(df)
+df_backup = df
+#df
+
+table(df$circunferencia)
+
+#df = df %>% filter(circunferencia == "sim")
+nrow(df)
+
+```
+```{r TESTE}
+conti(df, "tumor_primario", "QT")
+
+conti(df, "resolveu_estenose", "QT")
+conti(df, "resolveu_estenose", "tumor_primario")
+
+analise_mod(glm(resolveu_estenose ~ tumor_primario, data=df, family="binomial"))
+analise_mod(glm(resolveu_estenose ~ QT + tumor_primario, data=df, family="binomial"))
+```
+
+
+```{r TESTE}
+df = df_backup #%>% filter(circunferencia == "não")
+
+coluna_analisada = "tumor_primario"
+
+summary_numerico_por_grupo_n_parametrico("n_dilatacoes1_resolveu", coluna_analisada) %>% capture()
+summary_numerico_por_grupo_n_parametrico("n_dilatacoes1_nresolveu", coluna_analisada) %>% capture()
+
+summary_numerico_por_grupo_n_parametrico("n_dilatacoes2_resolveu", coluna_analisada) %>% capture()
+summary_numerico_por_grupo_n_parametrico("n_dilatacoes2_nresolveu", coluna_analisada) %>% capture()
+
+
+```
+
+
+```{r ANALISE ESTENOSE}
+df = df_backup
+
+df$estenose = as.character(df$estenose)
+
+table(df$estenose)
+table(df$circunferencia, df$estenose)
+
+df$estenose[df$estenose == "sim" & df$circunferencia == "sim"] = "circu"
+table(df$estenose)
+
+df$estenose = as.factor(df$estenose)
+
+coluna_analisada  = "estenose"
+lista_coluna = names(df)[which(!(names(df) %in% c(coluna_analisada,"resolveu_estenose",
+                                                  "s4","s8","s12","s16","s20","s24",
+                                                  "n_dilatacoes1","n_dilatacoes2",
+                                                  "circunferencia")))]
+
+tabelona = summary_numerico_por_grupo_n_parametrico("idade", coluna_analisada)[FALSE, ]
+
+for (coluna in lista_coluna){
+  classe = class(df[[coluna]])
+  if (classe == "numeric"){
+    if (normalidade_por_grupo_criterio(coluna, coluna_analisada) == TRUE){
+      tabelinha = summary_numerico_por_grupo_n_parametrico(coluna, coluna_analisada)
+    }
+    else{
+      tabelinha = summary_numerico_por_grupo_n_parametrico(coluna, coluna_analisada)
+    }
+    tabelona = rbind(tabelona, tabelinha)
+  }
+  else{
+    tabelinha = conti(df, coluna_analisada, coluna, "row", apenas_fisher=T)
+    tabelona = rbind(tabelona, tabelinha)
+  }
+}
+colnames(tabelona)[colnames(tabelona) == "Overall"] = paste0("Overall (n=", nrow(df[complete.cases(df[[coluna_analisada]]), ]), ")")
+niveis = levels(df[[coluna_analisada]])
+for (i in 1:length(niveis)){
+  nivel = niveis[i]
+  colnames(tabelona)[colnames(tabelona) == nivel] = paste0(nivel, " (n=", table(df[[coluna_analisada]])[i], ")")}
+
+tabelona %>% capture()
+
+df
+#########
+conti(df, "estenose", "RT", "row", apenas_fisher=T)
+summary_numerico_por_grupo_n_parametrico(df, "indice_CxC", "estenose")
+
+```
+
+
+```{r ANALISE ESTENOSE: Investigando Indice CxC ***tabela fd***}
+df = df_backup
+df$estenose = ifelse(df$estenose == "sim", 1, 0)
+
+fd = data.frame(var_indice = numeric(0),
+                tn = numeric(0), fp = numeric(0), 
+                fn = numeric(0), tp = numeric(0))
+
+pontos_de_corte = unique(sort(df$indice_CxC))
+
+for (i in pontos_de_corte){
+  df$controle = ifelse(df$indice_CxC > i, 1, 0) #
+  
+  #MEDIDAS DE DESEMPENHO
+  #tb = table(df$controle, df$estenose) #tabela contigencia
+  #print(tb)
+  tn = nrow(df %>% filter(controle == 0 & estenose == 0)) #tb[1]
+  fp = nrow(df %>% filter(controle == 1 & estenose == 0)) #tb[2]
+  fn = nrow(df %>% filter(controle == 0 & estenose == 1)) #tb[3]
+  tp = nrow(df %>% filter(controle == 1 & estenose == 1)) #tb[4]
+  
+  fd[nrow(fd)+1,] = c(i, tn, fp, fn, tp)
+}
+
+fd <- fd[-nrow(fd), ]
+fd[is.na(fd)] <- 0
+
+fd
+fd$acuracia = (fd$tp + fd$tn) / (fd$tn + fd$fp + fd$fn + fd$tp)
+fd$precisao = fd$tp / (fd$tp + fd$fp)
+
+fd$sensibilidade = fd$tp / (fd$tp + fd$fn) # Recall
+fd$especificidade = fd$tn / (fd$tn + fd$fp)
+
+fd[is.na(fd)] <- 0
+fd$f1 = 2 * (fd$precisao * fd$sensibilidade) / (fd$precisao + fd$sensibilidade)
+
+fd$valor_pre_posi = fd$tp / (fd$tp + fd$fp)
+fd$valor_pre_neg = fd$tn / (fd$tn + fd$fn)
+
+# Métricas adicionais
+fd$taxa_falsos_positivos = 1 - fd$especificidade # Taxa de Falsos Positivos (False Positive Rate)
+fd$taxa_falsos_negativos = 1 - fd$sensibilidade # Taxa de Falsos Negativos (False Negative Rate)
+fd$fdr = fd$fp / (fd$tp + fd$fp) # Taxa de Falsas Descobertas (False Discovery Rate)
+fd$fo_r = fd$fn / (fd$tn + fd$fn) # Taxa de Falsas Omissões (False Omission Rate)
+fd$indice_youden = fd$sensibilidade + fd$especificidade - 1 # Índice de Youden (Youden's Index)
+
+# Coeficiente de Matthews (Matthews Correlation Coefficient)
+fd$coef_matthews = (fd$tp*fd$tn - fd$fp*fd$fn) / sqrt((fd$tp+fd$fp)*(fd$tp+fd$fn)*(fd$tn+fd$fp)*(fd$tn+fd$fn))
+
+# Definindo beta como 1 para F1-Score
+beta <- 1
+fd$fb_score = (1 + beta^2) * (fd$valor_pre_posi * fd$sensibilidade) / 
+              ((beta^2 * fd$valor_pre_posi) + fd$sensibilidade)
+
+fd[is.na(fd)] <- 0
+fd_backup = fd
+fd
+round(fd, 2) %>% write_clip(dec = ",", col.names = TRUE) %>% print()
+
+```
+
+
+```{r}
+
+
+```
+
+
+```{r ANALISE ESTENOSE: Investigando Indice CxC ***GRAFICO CURVA ROC***}
+##################  AREA SOBRE A CURVA - CALCULO MANUAL
+fdd <- fd[order(fd$taxa_falsos_positivos),]
+auc <- 0
+for (i in 1:(nrow(fdd) - 1)) {
+    delta_x <- fdd$taxa_falsos_positivos[i+1] - fdd$taxa_falsos_positivos[i]
+    avg_y <- (fdd$sensibilidade[i+1] + fdd$sensibilidade[i]) / 2
+    auc <- auc + delta_x * avg_y
+}
+auc
+
+################## GRAFICO CURVA ROC
+fd_grafico = fd[,c('sensibilidade','taxa_falsos_positivos')]
+#fd_grafico %>% capture()
+fd_grafico[c(4,7,16),]$taxa_falsos_positivos = fd_grafico[c(4,7,16),]$taxa_falsos_positivos - 0.02
+fd_grafico[c(8, 17),]$taxa_falsos_positivos = fd_grafico[c(8, 17),]$taxa_falsos_positivos - 0.04
+fd_grafico[c(18),]$taxa_falsos_positivos = fd_grafico[c(18),]$taxa_falsos_positivos + 0.04
+fd_grafico[c(19),]$taxa_falsos_positivos = fd_grafico[c(19),]$taxa_falsos_positivos + 0.02
+fd_grafico = rbind(fd_grafico, 1)
+
+ggplot(fd_grafico, aes(x= taxa_falsos_positivos, y= sensibilidade)) +
+  theme_bw() + 
+  geom_step(color= "red", size=0.7) +
+  #geom_line(color = "red", size=1) + 
+  #geom_point(color= "black", alpha=0.5, size=3.5) +
+  labs(title="Curve Roc: Index CxC", x="1 - Specificity", y="Sensibility",
+       subtitle = paste("AUC =", area_curva)) +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", size=0.7) +
+  scale_x_continuous(breaks=seq(from = 0, to = 1, by = 0.2), limits = c(0,1)) +
+  scale_y_continuous(breaks=seq(from = 0, to = 1, by = 0.2), limits = c(0,1))
+
+#ggsave("Curva_Roc.png", height=10, width=15, units="cm", dpi= 600)
+
+```
+
+
+```{r ANALISE ESTENOSE: Investigando Indice CxC ***GRAFICO CURVA ROC (Package)***}
+library(pROC)
+model <- glm(estenose ~ indice_CxC, data=df, family="binomial")
+predicted_probabilities <- predict(model, type="response")
+predicted_probabilities = ifelse(predicted_probabilities >= 0.5, 1, 0)
+
+roc_curve <- roc(df$estenose, predicted_probabilities)
+plot(roc_curve, main="Curva ROC")
+auc(roc_curve)
+interva = ci(roc_curve)
+ic1 = round(interva[1], 2)
+ic = round(interva[2], 2)
+ic2 = round(interva[3], 2)
+
+area_curva = paste0(ic, " (IC:", ic1, " - ", ic2, ")")
+area_curva
+
+ggplot(df, aes(x=as.factor(x=estenose), y=indice_CxC, fill=as.factor(estenose))) + 
+    geom_boxplot(show.legend = FALSE) + 
+    geom_jitter(alpha=0.5, show.legend = FALSE, size=2, position=position_jitter(0.25), color="#141514") +
+    geom_errorbar(stat = "summary", fun.data = "mean_se", width= 0.3, color="white") + 
+    geom_point(stat = "summary", fun = "mean", show.legend = FALSE, color="red", size=2) + 
+    theme(plot.title=element_text(face='italic'), axis.title=element_text(size=9, face='italic'),
+          legend.position = "bottom") + 
+    theme_minimal() + 
+    theme(axis.line = element_line(colour = "black"),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.border = element_blank(),
+          panel.background = element_blank())
+```
+
+
+```{r ANALISE ESTENOSE: Investigando Indice CxC ***GRAFICO 2D MEDIDAS DE AVALIAÇÃO***}
+################# GRAFICO 2D DAS MEDIDAS
+fd_melt <- reshape2::melt(fd, id.vars="var_indice", 
+                          measure.vars=c("acuracia", "sensibilidade", "especificidade", 
+                                         "valor_pre_posi", 
+                                         "valor_pre_neg", "f1", "taxa_falsos_positivos", "taxa_falsos_negativos", 
+                                         "fdr", "fo_r", "indice_youden", "coef_matthews"))
+
+# Plotando todas as métricas no mesmo gráfico
+ggplot(fd_melt, aes(x=var_indice, y=value, color=variable)) +
+  geom_line(size=1) +
+  geom_point(alpha=0.5, size=3.5) +
+  labs(title="Metrics vs Cutoff", 
+       x="Index CxC (>)", y="Proportion", fill="") +
+  scale_color_manual(values=c("#011627", "#3a86ff", "#DF5474", "#8ac926", "#F6BD60", "#BDA0BC", "#bde0fe",
+                             "#8338ec", "#ffc2d1", "#a98467", "#f72585", "#eec170"), name="",
+                     labels = c("Accuracy", "Sensibility", "Specificity", 
+                                "Positive Predictive Value", "Negative Predictive Value",
+                                "F1 Score", "False Positive Rate", "False Negative Rate", "False Discovery Rate",
+                                "False Omission Rate", "Youden's Index", "Matthews Correlation Coefficient")) +
+  theme_bw() + theme(legend.position="bottom") +
+  scale_x_continuous(breaks=seq(from = 2, to = 10, by = 0.5), limits = c(2, 10))
+
+#ggsave("Metrics.png", height=10, width=15, units="cm", dpi= 600)
+
+##############################################
+
+# Plotando apenas as métricas de sensibilidade, especificidade e acurácia no mesmo gráfico
+ggplot(fd_melt[fd_melt$variable %in% c("sensibilidade", "especificidade", "acuracia"), ], 
+       aes(x=var_indice, y=value, color=variable)) +
+  geom_line(size=1) +
+  geom_point(alpha=0.5, size=3.5) +
+  labs(title="Metrics vs Cutoff", 
+       x="Index CxC (>)", y="Proportion", fill="") +
+  scale_color_manual(values=c("#3a86ff", "#DF5474", "#8ac926"), name="",
+                     labels = c("Accuracy", "Sensibility", "Specificity")
+                     ) +
+  theme_bw() + theme(legend.position="bottom") +
+  scale_x_continuous(breaks=seq(from = 2, to = 10, by = 0.5), limits = c(2, 10))
+
+#ggsave("Metrics2.png", height=10, width=15, units="cm", dpi= 600)
+```
+
+
+```{r ANALISE ESTENOSE: Investigando Indice CxC ***MEDIDA DE TAMANHO DO EFEITO: Odds Ratio***}
+fd$odds = NA
+fd$p_value = NA
+
+countt = 1
+for (i in fd$var_indice){
+  df$controle = ifelse(df$indice_CxC > i, 1, 0) #
+  
+  #MEDIDAS DE TAMANHO DE EFEITO
+  modelo = analise_mod(glm(df$estenose ~ df$controle, data=df, family="binomial"))
+  fd$odds[countt] = modelo$ODDS[1]
+  fd$p_value[countt] = modelo$`Pr(>|z|)`[1]
+  countt = countt + 1
+}
+fd[,c('var_indice','odds','p_value')] %>% capture()
+```
+
+
+```{r ANALISE ESTENOSE: Investigando Indice CxC ***IC estimado pela DISTRIBUIÇÃO BINOMIAL***}
+fd = fd_backup
+
+IC_function = function(medida, intervalos){
+  ic_0 = as.character(rround(intervalos[1], 2))
+  ic_1 = as.character(rround(intervalos[2], 2))
+  medida = as.character(rround(medida, 2))
+  texto = paste0(medida,' (',ic_0,' - ',ic_1,')')
+  return(texto)
+}
+
+for (i in 1:nrow(fd)){
+  # Acuracia
+  teste_acuracia = binom.test(fd$tp[i] + fd$tn[i], fd$tn[i] + fd$fp[i] + fd$fn[i] + fd$tp[i], conf.level = 0.95)$conf.int
+  fd$acuracia[i] = IC_function(as.numeric(fd$acuracia[i]), teste_acuracia)
+  
+  # Sensibilidade
+  teste_sens = binom.test(fd$tp[i], fd$tp[i] + fd$fn[i], conf.level = 0.95)$conf.int
+  fd$sensibilidade[i] = IC_function(as.numeric(fd$sensibilidade[i]), teste_sens)
+  
+  # Precisão (Valor Preditivo Positivo - VPP)
+  teste_prec = binom.test(fd$tp[i], fd$tp[i] + fd$fp[i], conf.level = 0.95)$conf.int
+  fd$precisao[i] = IC_function(as.numeric(fd$precisao[i]), teste_prec)
+  
+  # Valor Preditivo Negativo (VPN)
+  teste_vpn = binom.test(fd$tn[i], fd$tn[i] + fd$fn[i], conf.level = 0.95)$conf.int
+  fd$valor_pre_neg[i] = IC_function(as.numeric(fd$valor_pre_neg[i]), teste_vpn)
+  
+  # Especificidade
+  teste_espec = binom.test(fd$tn[i], fd$tn[i] + fd$fp[i], conf.level = 0.95)$conf.int
+  fd$especificidade[i] = IC_function(as.numeric(fd$especificidade[i]), teste_espec)
+  
+  # Taxa de Falsos Positivos (TFP) - FP / (FP + TN)
+  teste_tfp = binom.test(fd$fp[i], fd$fp[i] + fd$tn[i], conf.level = 0.95)$conf.int
+  fd$taxa_falsos_positivos[i] = IC_function(as.numeric(fd$taxa_falsos_positivos[i]), teste_tfp)
+  
+  # Taxa de Falsos Negativos (TFN) - FN / (TP + FN)
+  teste_tfn = binom.test(fd$fn[i], fd$fn[i] + fd$tp[i], conf.level = 0.95)$conf.int
+  fd$taxa_falsos_negativos[i] = IC_function(as.numeric(fd$taxa_falsos_negativos[i]), teste_tfn)
+  
+  # Taxa de Falsas Descobertas (FDR) - FP / (TP + FP)
+  teste_fdr = binom.test(fd$fp[i], fd$tp[i] + fd$fp[i], conf.level = 0.95)$conf.int
+  fd$fdr[i] = IC_function(as.numeric(fd$fdr[i]), teste_fdr)
+  
+  # Taxa de Falsas Omissões (FOR) - FN / (TN + FN)
+  teste_for = binom.test(fd$fn[i], fd$tn[i] + fd$fn[i], conf.level = 0.95)$conf.int
+  fd$fo_r[i] = IC_function(as.numeric(fd$fo_r[i]), teste_for)
+  
+  # Valor Preditivo Positivo (VPP) - TP / (TP + FP)
+  teste_vpp = binom.test(fd$tp[i], fd$tp[i] + fd$fp[i], conf.level = 0.95)$conf.int
+  fd$valor_pre_posi[i] = IC_function(as.numeric(fd$valor_pre_posi[i]), teste_vpp)
+
+}
+
+fd <- lapply(fd, function(x) if(is.numeric(x)) round(x, 2) else x)
+fd <- as.data.frame(fd)
+fd %>% capture()
+
+#resetando
+fd = fd_backup
+```
+
+
+```{r ANALISE ESTENOSE: Investigando Indice CxC ***IC estimado pela DISTRIBUIÇÃO Z***}
+fd = fd_backup
+
+IC_function = function(x, n){
+  medida_x = x/n
+  Z <- qnorm(0.975) # Valor Z para IC de 95%
+  SE <- sqrt((medida_x * (1 - medida_x)) / n)
+
+  ic_0 <- medida_x - Z * SE
+  ic_1 <- medida_x + Z * SE
+
+  if (ic_0 < 0) {ic_0 = 0}
+  if (ic_1 > 1) {ic_1 = 1}
+  
+  ic_0 = as.character(rround(ic_0, 2))
+  ic_1 = as.character(rround(ic_1, 2))
+
+  medida = as.character(rround(medida_x, 2))
+  texto = paste0(medida,' (',ic_0,' - ',ic_1,')')
+  return(texto)
+}
+
+IC_function(12, 16)
+
+for (i in 1:nrow(fd)){
+  # Acuracia
+  fd$acuracia[i] = IC_function(fd$tp[i] + fd$tn[i], fd$tn[i] + fd$fp[i] + fd$fn[i] + fd$tp[i])
+  
+  # Sensibilidade
+  fd$sensibilidade[i] = IC_function(fd$tp[i], fd$tp[i] + fd$fn[i])
+  
+  # Precisão (Valor Preditivo Positivo - VPP)
+  fd$precisao[i] = IC_function(fd$tp[i], fd$tp[i] + fd$fp[i])
+  
+  # Valor Preditivo Negativo (VPN)
+  fd$valor_pre_neg[i] = IC_function(fd$tn[i], fd$tn[i] + fd$fn[i])
+  
+  # Especificidade
+  fd$especificidade[i] = IC_function(fd$tn[i], fd$tn[i] + fd$fp[i])
+  
+  # Taxa de Falsos Positivos (TFP) - FP / (FP + TN)
+  fd$taxa_falsos_positivos[i] = IC_function(fd$fp[i], fd$fp[i] + fd$tn[i])
+  
+  # Taxa de Falsos Negativos (TFN) - FN / (TP + FN)
+  fd$taxa_falsos_negativos[i] = IC_function(fd$fn[i], fd$fn[i] + fd$tp[i])
+  
+  # Taxa de Falsas Descobertas (FDR) - FP / (TP + FP)
+  fd$fdr[i] = IC_function(fd$fp[i], fd$tp[i] + fd$fp[i])
+  
+  # Taxa de Falsas Omissões (FOR) - FN / (TN + FN)
+  fd$fo_r[i] = IC_function(fd$fn[i], fd$tn[i] + fd$fn[i])
+  
+  # Valor Preditivo Positivo (VPP) - TP / (TP + FP)
+  fd$valor_pre_posi[i] = IC_function(fd$tp[i], fd$tp[i] + fd$fp[i])
+
+}
+
+fd <- lapply(fd, function(x) if(is.numeric(x)) round(x, 2) else x)
+fd <- as.data.frame(fd)
+fd %>% capture()
+
+fd_ic = fd
+
+#resetando
+fd = fd_backup
+
+######################################
+#CRIANDO GRAFICO 
+fd_melt = data.frame(var_indice = numeric(0), 
+                     variable = numeric(0), 
+                     value = numeric(0),
+                     minimo = numeric(0), 
+                     maximo = numeric(0))
+
+for (i in 1:nrow(fd_ic)){
+  corte = fd_ic$var_indice[i]
+  medida = substr(fd_ic$acuracia[i], 1,4)
+  ic_0 = substr(fd_ic$acuracia[i], 7,10)
+  ic_1 = substr(fd_ic$acuracia[i], 14,17)
+  fd_melt[nrow(fd_melt)+1,] = c(corte, 'acuracia', medida, ic_0, ic_1)
+}
+for (i in 1:nrow(fd_ic)){
+  corte = fd_ic$var_indice[i]
+  medida = substr(fd_ic$sensibilidade[i], 1,4)
+  ic_0 = substr(fd_ic$sensibilidade[i], 7,10)
+  ic_1 = substr(fd_ic$sensibilidade[i], 14,17)
+  fd_melt[nrow(fd_melt)+1,] = c(corte, 'sensibilidade', medida, ic_0, ic_1)
+}
+for (i in 1:nrow(fd_ic)){
+  corte = fd_ic$var_indice[i]
+  medida = substr(fd_ic$especificidade[i], 1,4)
+  ic_0 = substr(fd_ic$especificidade[i], 7,10)
+  ic_1 = substr(fd_ic$especificidade[i], 14,17)
+  fd_melt[nrow(fd_melt)+1,] = c(corte, 'especificidade', medida, ic_0, ic_1)
+}
+fd_melt
+
+fd_melt$var_indice = as.numeric(fd_melt$var_indice)
+fd_melt$value = as.numeric(fd_melt$value)
+fd_melt$minimo = as.numeric(fd_melt$minimo)
+fd_melt$maximo = as.numeric(fd_melt$maximo)
+
+ggplot(fd_melt, aes(x=var_indice, y=value, color=variable)) +
+  geom_line(size=1) +
+  geom_point(alpha=0.5, size=3.5) +
+  labs(title="Metrics vs Cutoff", 
+       x="Index CxC (>)", y="Proportion", fill="") +
+  scale_color_manual(values=c("#3a86ff", "#DF5474", "#8ac926"), name="",
+                     labels = c("Accuracy", "Sensibility", "Specificity")
+                     ) +
+  theme_bw() + theme(legend.position="bottom") + geom_errorbar(aes(ymin = minimo, ymax  = maximo)) + 
+  scale_x_continuous(breaks=seq(from = 2, to = 10, by = 0.5), limits = c(2, 10))
+
+#ggsave("Metrics3.png", height=10, width=15, units="cm", dpi= 600)
+
+```
+
+
+```{r ANALISE BASICA GERAL DADOS CATEGORICOS}
+for (coluna in names(df)){
+  classe = class(df[[coluna]])
+  if (classe == "factor"){
+    print(coluna)
+    print(table(df[[coluna]]))
+    print("============================================")
+  }
+}
+```
+
+
+```{r ANALISE BASICA GERAL DADOS NUMERICOS}
+
+for (coluna in colunas){
+  classe = df[[coluna]]
+  
+  if (classe = "numeric"){
+    mediana = rround( median(df[[coluna]]) )
+    q1 = rround( quantile(df[[coluna]], .25) )
+    q3 = rround( quantile(df[[coluna]], .75) )
+  }else{
+    
+  }
+  
+  
+}
+
+```
+
+
+```{r ANALISE POR GRUPO DE TRATAMENTO}
+coluna_analisada  = "grupo"
+lista_coluna = names(df)[which(!(names(df) %in% c(coluna_analisada,
+                                                  "em_bloco",
+                                                  "estenose_desenv",
+                                                  "estenose_resol_completa",
+                                                  "circunferencia")))]
+
+tabelona = summary_numerico_por_grupo_n_parametrico("idade", coluna_analisada)[FALSE, ]
+
+for (coluna in lista_coluna){
+  classe = class(df[[coluna]])
+  if (classe == "numeric"){
+    #if (normalidade_por_grupo_criterio(coluna, coluna_analisada) == TRUE){
+     # tabelinha = summary_numerico_por_grupo_n_parametrico(coluna, coluna_analisada)
+    #}
+    #else{
+     # tabelinha = summary_numerico_por_grupo_n_parametrico(coluna, coluna_analisada)
+    #}
+    tabelinha = summary_numerico_por_grupo_n_parametrico(coluna, coluna_analisada)
+    tabelona = rbind(tabelona, tabelinha)
+  }
+  else{
+    tabelinha = conti(df, coluna_analisada, coluna, apenas_fisher=T)
+    tabelona = rbind(tabelona, tabelinha)
+  }
+}
+
+colnames(tabelona)[colnames(tabelona) == "Overall"] = paste0("Overall (n=", nrow(df[complete.cases(df[[coluna_analisada]]), ]), ")")
+niveis = levels(df[[coluna_analisada]])
+for (i in 1:length(niveis)){
+  nivel = niveis[i]
+  colnames(tabelona)[colnames(tabelona) == nivel] = paste0(nivel, " (n=", table(df[[coluna_analisada]])[i], ")")}
+
+tabelona %>% capture()
+
+#########
+conti(df, "grupo", "RT", apenas_fisher=T)
+conti(df, "grupo", "QT", apenas_fisher=T)
+summary_numerico_por_grupo_n_parametrico("indice_CxC", "grupo")
+```
+
+
+```{r ANALISE TAXA DE ESTENOSE POR GRUPO}
+table(df$estenose)
+coluna_analisada  = "estenose"
+lista_coluna = names(df)[which(!(names(df) %in% c(coluna_analisada,"resolveu_estenose",
+                                                  "s4","s8","s12","s16","s20","s24",
+                                                  "n_dilatacoes1","n_dilatacoes2",
+                                                  "circunferencia")))]
+
+tabelona = summary_numerico_por_grupo_n_parametrico("idade", coluna_analisada)[FALSE, ]
+
+for (coluna in lista_coluna){
+  classe = class(df[[coluna]])
+  if (classe == "numeric"){
+    if (normalidade_por_grupo_criterio(coluna, coluna_analisada) == TRUE){
+      tabelinha = summary_numerico_por_grupo_n_parametrico(coluna, coluna_analisada)
+    }
+    else{
+      tabelinha = summary_numerico_por_grupo_n_parametrico(coluna, coluna_analisada)
+    }
+    tabelona = rbind(tabelona, tabelinha)
+  }
+  else{
+    tabelinha = conti(df, coluna_analisada, coluna, "row", apenas_fisher=T)
+    tabelona = rbind(tabelona, tabelinha)
+  }
+}
+colnames(tabelona)[colnames(tabelona) == "Overall"] = paste0("Overall (n=", nrow(df[complete.cases(df[[coluna_analisada]]), ]), ")")
+niveis = levels(df[[coluna_analisada]])
+for (i in 1:length(niveis)){
+  nivel = niveis[i]
+  colnames(tabelona)[colnames(tabelona) == nivel] = paste0(nivel, " (n=", table(df[[coluna_analisada]])[i], ")")}
+
+tabelona %>% capture()
+
+#cont(df, "estenose")
+
+#########
+conti(df, "estenose", "RT", 'row', apenas_fisher=T)
+conti(df, "estenose", "QT", 'row', apenas_fisher=T)
+summary_numerico_por_grupo_n_parametrico("indice_CxC", "estenose")
+```
+
+
+```{r ANALISE TAXA DE RESOLUÇÃO DE ESTENOSE}
+coluna_analisada  = "resolveu_estenose"
+
+lista_coluna = names(df)[which(!(names(df) %in% c(coluna_analisada,"estenose",
+                                                  "circunferencia",
+                                                  "localizacao")))]
+
+tabelona = summary_numerico_por_grupo_n_parametrico("idade", coluna_analisada)[FALSE, ]
+
+for (coluna in lista_coluna){
+  classe = class(df[[coluna]])
+  if (classe == "numeric"){
+    #if (normalidade_por_grupo_criterio(coluna, coluna_analisada) == TRUE){
+     # tabelinha = summary_numerico_por_grupo_n_parametrico(coluna, coluna_analisada)
+    #}
+    #else{
+     # tabelinha = summary_numerico_por_grupo_n_parametrico(coluna, coluna_analisada)
+    #}
+    tabelinha = summary_numerico_por_grupo_n_parametrico(coluna, coluna_analisada)
+    tabelona = rbind(tabelona, tabelinha)
+  }
+  else{
+    tabelinha = conti(df, coluna_analisada, coluna, apenas_fisher=T)
+    tabelona = rbind(tabelona, tabelinha)
+  }
+}
+colnames(tabelona)[colnames(tabelona) == "Overall"] = paste0("Overall (n=", nrow(df[complete.cases(df[[coluna_analisada]]), ]), ")")
+niveis = levels(df[[coluna_analisada]])
+for (i in 1:length(niveis)){
+  nivel = niveis[i]
+  colnames(tabelona)[colnames(tabelona) == nivel] = paste0(nivel, " (n=", table(df[[coluna_analisada]])[i], ")")}
+
+tabelona %>% capture()
+
+#########
+conti(df, "resolveu_estenose", "RT", apenas_fisher=T)
+conti(df, "resolveu_estenose", "QT", apenas_fisher=T)
+summary_numerico_por_grupo_n_parametrico("indice_CxC", "resolveu_estenose")
+```
+
+
+```{r TAXA DE TUMOR}
+coluna_analisada  = "tumor_primario"
+lista_coluna = names(df)[which(!(names(df) %in% c(coluna_analisada,
+                                                  "em_bloco","circunferencia")))]
+
+tabelona = summary_numerico_por_grupo_n_parametrico("idade", coluna_analisada)[FALSE, ]
+
+for (coluna in lista_coluna){
+  classe = class(df[[coluna]])
+  if (classe == "numeric"){
+    #if (normalidade_por_grupo_criterio(coluna, coluna_analisada) == TRUE){
+     # tabelinha = summary_numerico_por_grupo_n_parametrico(coluna, coluna_analisada)
+    #}
+    #else{
+     # tabelinha = summary_numerico_por_grupo_n_parametrico(coluna, coluna_analisada)
+    #}
+    tabelinha = summary_numerico_por_grupo_n_parametrico(coluna, coluna_analisada)
+    tabelona = rbind(tabelona, tabelinha)
+  }
+  else{
+    tabelinha = conti(df, coluna_analisada, coluna, apenas_fisher=T)
+    tabelona = rbind(tabelona, tabelinha)
+  }
+}
+
+colnames(tabelona)[colnames(tabelona) == "Overall"] = paste0("Overall (n=", nrow(df[complete.cases(df[[coluna_analisada]]), ]), ")")
+niveis = levels(df[[coluna_analisada]])
+for (i in 1:length(niveis)){
+  nivel = niveis[i]
+  colnames(tabelona)[colnames(tabelona) == nivel] = paste0(nivel, " (n=", table(df[[coluna_analisada]])[i], ")")}
+
+tabelona %>% capture()
+
+#########
+conti(df, "tumor_primario", "RT", apenas_fisher=T)
+conti(df, "tumor_primario", "QT", apenas_fisher=T)
+summary_numerico_por_grupo_n_parametrico("indice_CxC", "tumor_primario")
+```
+
+
+```{r TAXA DE COMPLICAÇÕES}
+coluna_analisada  = "complicacoes"
+lista_coluna = names(df)[which(!(names(df) %in% c(coluna_analisada,
+                                                  "em_bloco",
+                                                  "circunferencia")))]
+
+tabelona = summary_numerico_por_grupo_n_parametrico("idade", coluna_analisada)[FALSE, ]
+
+for (coluna in lista_coluna){
+  classe = class(df[[coluna]])
+  if (classe == "numeric"){
+    if (normalidade_por_grupo_criterio(coluna, coluna_analisada) == TRUE){
+      tabelinha = summary_numerico_por_grupo_n_parametrico(coluna, coluna_analisada)
+    }
+    else{
+      tabelinha = summary_numerico_por_grupo_n_parametrico(coluna, coluna_analisada)
+    }
+    tabelona = rbind(tabelona, tabelinha)
+  }
+  else{
+    tabelinha = conti(df, coluna_analisada, coluna, apenas_fisher=T)
+    tabelona = rbind(tabelona, tabelinha)
+  }
+}
+
+colnames(tabelona)[colnames(tabelona) == "Overall"] = paste0("Overall (n=", nrow(df[complete.cases(df[[coluna_analisada]]), ]), ")")
+niveis = levels(df[[coluna_analisada]])
+for (i in 1:length(niveis)){
+  nivel = niveis[i]
+  colnames(tabelona)[colnames(tabelona) == nivel] = paste0(nivel, " (n=", table(df[[coluna_analisada]])[i], ")")}
+
+tabelona %>% capture()
+
+#########
+conti(df, "complicacoes", "RT", apenas_fisher=T)
+conti(df, "complicacoes", "QT", apenas_fisher=T)
+summary_numerico_por_grupo_n_parametrico("indice_CxC", "complicacoes")
+```
+
+
+```{r DESENVOLVIMENTO DE ESTENOSE CONFORME O TEMPO}
+library(ggalluvial)
+
+# GERAL
+grafi = df %>% 
+  filter(complete.cases(s4, s8, s12, s16, s20, s24)) %>% 
+  group_by(s4, s8, s12, s16, s20, s24) %>% 
+  summarise(n = n()) %>% mutate(Freq = round(n/sum(n), 3)) %>% ungroup()
+maximo = max(grafi$n)
+ggplot(data = grafi,
+       aes(axis1=s4, axis2=s8, axis3=s12, axis4=s16, axis5=s20, axis6=s24,
+           y = n)) +
+  scale_x_discrete(limits = c("4º Semana", "8º Semana", "12º Semana", 
+                              "16º Semana", "20º Semana", "24º Semana\nÚltima"), expand = c(.2, .05)) +
+  geom_alluvium(aes(fill = s24)) +
+  geom_stratum() +
+  geom_text(stat = "stratum", aes(label = after_stat(stratum))) +
+  theme_minimal() +
+  labs(title="Presença de Estenose Geral", x="Tempo", y="Frequência", fill="Resolução\nEstenose") + 
+  scale_y_continuous(breaks=seq(from = 0, 
+                                to = nrow(df %>% filter(complete.cases(s4, s8, s12, s16, s20, s24))), 
+                                by = 1))
+ggsave("aluviais_geral.png", height=10, width=20, units="cm", dpi= 600)
+####################################
+
+# GRUPO: ORAL
+grafi = df %>% filter(grupo == "oral") %>% 
+  filter(complete.cases(s4, s8, s12, s16, s20, s24)) %>% 
+  group_by(s4, s8, s12, s16, s20, s24) %>% 
+  summarise(n = n()) %>% mutate(Freq = round(n/sum(n), 3)) %>% ungroup()
+maximo = max(grafi$n)
+ggplot(data = grafi,
+       aes(axis1=s4, axis2=s8, axis3=s12, axis4=s16, axis5=s20, axis6=s24,
+           y = n)) +
+  scale_x_discrete(limits = c("4º Semana", "8º Semana", "12º Semana", 
+                              "16º Semana", "20º Semana", "24º Semana\nÚltima"), expand = c(.2, .05)) +
+  geom_alluvium(aes(fill = s24)) +
+  geom_stratum() +
+  geom_text(stat = "stratum", aes(label = after_stat(stratum))) +
+  theme_minimal() +
+  labs(title="Presença de Estenose no grupo Oral", x="Tempo", 
+       y="Frequência", fill="Resolução\nEstenose") + 
+  scale_y_continuous(breaks=seq(from = 0, to = table(df$grupo)[1], by = 1)) +
+  theme(legend.position = "none")
+ggsave("aluviais_oral.png", height=10, width=20, units="cm", dpi= 600)
+####################################
+
+# GRUPO: INJETAVEL
+grafi = df %>% filter(grupo == "injetável") %>% 
+  filter(complete.cases(s4, s8, s12, s16, s20, s24)) %>% 
+  group_by(s4, s8, s12, s16, s20, s24) %>% 
+  summarise(n = n()) %>% mutate(Freq = round(n/sum(n), 3)) %>% ungroup()
+maximo = max(grafi$n)
+ggplot(data = grafi,
+       aes(axis1=s4, axis2=s8, axis3=s12, axis4=s16, axis5=s20, axis6=s24,
+           y = n)) +
+  scale_x_discrete(limits = c("4º Semana", "8º Semana", "12º Semana", 
+                              "16º Semana", "20º Semana", "24º Semana\nÚltima"), expand = c(.2, .05)) +
+  geom_alluvium(aes(fill = s24)) +
+  geom_stratum() +
+  geom_text(stat = "stratum", aes(label = after_stat(stratum))) +
+  theme_minimal() +
+  labs(title="Presença de Estenose no grupo Injetável", x="Tempo", 
+       y="Frequência", fill="Resolução\nEstenose") + 
+  scale_y_continuous(breaks=seq(from = 0, to = table(df$grupo)[2], by = 1)) +
+  theme(legend.position = "none")
+ggsave("aluviais_injetavel.png", height=10, width=20, units="cm", dpi= 600)
+```
+
+
+##### GLICEMIA
+
+```{r GLICEMIA ANTES E PÓS}
+# Corticoide oral altera a glicemia ?
+
+library(effsize)
+
+fd <- data.frame(Variable = character(0), Nivel = character(0),
+                 "u GL BASAL" = character(0), "u GL POS" = character(0), 
+                 "t Test" = character(0), "d'Cohen" = character(0), 
+                 "Md GL BASAL" = character(0), "Md GL POS" = character(0), 
+                 "MW" = character(0), "Hod-Leh" = character(0))
+
+colunas = c("grupo", "estenose", "tumor_primario", "complicacoes")
+
+##################################
+nivel = levels(as.factor(df[[coluna]]))
+for (coluna in colunas){
+  nivel = levels(as.factor(df[[coluna]]))
+
+  for (item in 1:length(nivel)){
+    nivel_atual = nivel[item]
+    
+    df_filter = df %>% filter(.data[[coluna]] == nivel_atual)
+    df_filter = df_filter[complete.cases(df_filter$glicemia_basal, df_filter$glicemia_pos), ]
+    
+    grupo0 = df_filter$glicemia_basal
+    grupo1 = df_filter$glicemia_pos
+    
+    #Média
+    u0 = as.character(rround(mean(grupo0, na.rm=T),2))
+    u1 = as.character(rround(mean(grupo1, na.rm=T),2))
+    
+    #Desvio Padrão
+    sd0 = as.character(rround(sd(grupo0, na.rm=T),2))
+    sd1 = as.character(rround(sd(grupo1, na.rm=T),2))
+    #concat
+    u_sd0 = paste0(u0," ± ",sd0)
+    u_sd1 = paste0(u1," ± ",sd1)
+    
+    #Tamanho do efeito (parametrico)
+    d_cohen = cohen.d(grupo1,grupo0)
+    estimador = as.character(rround(d_cohen$estimate[1],2))
+    IC_0 = as.character(rround(d_cohen$conf.int[1],2))
+    IC_1 = as.character(rround(d_cohen$conf.int[2],2))
+    d_cohen = paste0(estimador," (",IC_0," to ",IC_1,")")
+    
+    #Teste de Hipotese - Teste t
+    teste_t = retorne_p(t.test(df_filter$glicemia_basal, df_filter$glicemia_pos, paired=T)$p.value)
+  
+    #Mediana
+    quartis0 = quantile(grupo0, probs=c(.05/2, .5, 1-.05/2))
+    quartis0 = round(quartis0,2)
+    quartis1 = quantile(grupo1, probs=c(.05/2, .5, 1-.05/2))
+    quartis1 = round(quartis1,2)
+    #concat
+    md0 = paste0(quartis0[2],' [',quartis0[1],' - ',quartis0[3],']')
+    md1 = paste0(quartis1[2],' [',quartis1[1],' - ',quartis1[3],']')
+    
+    #Teste de Hipotese - Teste Mann Whitney
+    teste_man = wilcox.test(grupo1,grupo0, conf.int = TRUE, paired = TRUE)
+    man = retorne_p(teste_man$p.value)
+    
+    #Estimador Hodges Lehmann
+    estimador = as.character(rround(teste_man$estimate,2))
+    IC_00 = as.character(rround(teste_man$conf.int[1],2))
+    IC_01 = as.character(rround(teste_man$conf.int[2],2))
+    hodges_lehmann = paste0(estimador,' (',IC_00,' to ',IC_01,')')
+    
+    
+    fd[nrow(fd)+1,] = c(coluna, nivel_atual,
+                        u_sd0, u_sd1,
+                        teste_t, d_cohen,
+                        md0, md1,
+                        man, hodges_lehmann)
+  }  
+}
+
+fd$u.GL.BASAL = NULL
+fd$u.GL.POS = NULL
+fd$t.Test = NULL
+fd$d.Cohen = NULL
+fd$Odds.MW = NULL
+fd$LC = NULL
+
+fd %>% capture()
+
+```
+
+
+```{r}
+fd = data.frame(ID= character(0), 
+                Glicemia= character(0),
+                tempo= character(0),
+                sep=character(0))
+lista = c("glicemia_basal","glicemia_pos")
+coluna2 = "grupo"
+for (coluna in lista){
+  fdzinho = cbind(1:nrow(df), df[[coluna]], coluna, as.character(df[[coluna2]]))
+  fd = rbind(fd, fdzinho)
+}
+
+fd = fd %>% rename("ID" = "V1",
+                   "glicemia" = "V2",
+                   "sep" = "V4")
+
+fd$glicemia = as.numeric(fd$glicemia)
+fd$coluna = factor(fd$coluna, levels = lista)
+fd
+```
+
+
+```{r Representando graficamente a queda da glicemia}
+summary(df$glicemia_basal)
+summary(df$glicemia_pos)
+
+fd$sep = ifelse(fd$sep == "oral", "Oral", "Injetável")
+fd$coluna = ifelse(fd$coluna == "glicemia_basal", "Basal", "Pós")
+
+ggplot() +
+  geom_point(data=fd, aes(x=as.factor(coluna), y=glicemia, color=as.factor(coluna)),
+             alpha=0.5, size=2.5, show.legend = F) + 
+  geom_boxplot(data=fd, aes(x=as.factor(coluna), y=glicemia, color=as.factor(coluna)),
+               alpha=0.5, fill = 'white', show.legend = F) +
+  geom_line(data=fd, aes(x=as.factor(coluna), y=glicemia, color=as.factor(coluna), 
+                         group = ID), show.legend = F, alpha=0.4) +
+  facet_wrap(~ sep) + theme_bw() +
+  labs(y='mg/ld', title="Nivel de Glicemia por Grupos (não circunferencial)", x="") + 
+  scale_y_continuous(breaks=seq(from = 70, to = 135, by = 5), limits = c(70, 135)) + 
+  theme(legend.position = "none")
+#ggsave("Agrupamentos_n_circunferencial.png", height=10, width=15, units="cm", dpi=600)
+```
+
+
+```{r Há diferença estatistica na tendencia de queda ou aumenta}
+colunas = c("grupo", "estenose", "tumor_primario", "complicacoes")
+##################################
+fd = data.frame(Variable = character(0), P_Value = character(0))
+dff = df[complete.cases(df$glicemia_basal, df$glicemia_pos), ]
+
+for (coluna in colunas){
+  nivel = levels(as.factor(df[[coluna]]))
+  
+  df_filter = dff %>% filter(.data[[coluna]] == nivel[1])
+  diff1 = df_filter$glicemia_basal - df_filter$glicemia_pos
+  
+  df_filter = dff %>% filter(.data[[coluna]] == nivel[2])
+  diff2 = df_filter$glicemia_basal - df_filter$glicemia_pos
+  
+  pvalue = retorne_p(wilcox.test(diff1, diff2)$p.value)
+  
+  fd[nrow(fd)+1,] = c(coluna, pvalue)
+}
+fd %>% capture()
+```
+
+
+#### ANALISE DAS DILATAÇÕES
+
+```{r Analise Dilatações}
+lista_coluna = names(df)[which(!(names(df) %in% c("n_dilatacoes1","n_dilatacoes2",
+                                                  "s4","s8","s12","s16","s20","s24",
+                                                  "estenose","resolveu_estenose")))]
+
+tabelona = summary_numerico_por_grupo_n_parametrico("idade", "grupo")[FALSE, ]
+
+for (coluna in lista_coluna){
+  classe = class(df[[coluna]])
+  if (classe == "factor"){
+    print(coluna)
+    tabelinha1 = summary_numerico_por_grupo_n_parametrico("n_dilatacoes1", coluna, teste_extra = "T")
+    tabelinha2 = summary_numerico_por_grupo_n_parametrico("n_dilatacoes2", coluna, teste_extra = "T")
+    
+    tabelinha = rbind(tabelinha1, tabelinha2)
+    tabelinha$Variable = paste0(coluna, "-> ", tabelinha$Variable)
+    
+    for (nivel in c("não", "sim")){
+      df = df %>% filter(resolveu_estenose == nivel)
+      tabelinha1 = summary_numerico_por_grupo_n_parametrico("n_dilatacoes1", coluna, teste_extra = "T")
+      tabelinha2 = summary_numerico_por_grupo_n_parametrico("n_dilatacoes2", coluna, teste_extra = "T")
+      
+      tabelinha_2 = rbind(tabelinha1, tabelinha2)
+      tabelinha_2$Variable = paste0(coluna, "-> ", nivel, "-> ", tabelinha_2$Variable)
+      tabelinha = rbind(tabelinha, tabelinha_2)
+      
+      df = df_backup
+    }
+    tabelinha %>% capture()
+  }}
+
+```
+```{r}
+df$sep = ifelse(df$resolveu_estenose == "sim", "Resolveu Estenose", "Não Resolveu Estenose")
+
+df_filter = df %>% filter(complete.cases(sep, localizacao, n_dilatacoes2))
+
+ggplot(df_filter, aes(x=as.factor(localizacao), y=n_dilatacoes2, fill=as.factor(localizacao))) +
+  geom_boxplot(show.legend = F) + facet_wrap(~ sep) +
+  labs(y='n', title="Dilatações por Grupo", x="Grupos") + 
+  scale_y_continuous(breaks=seq(from = 0, to = 45, by = 5), limits = c(0, 45)) + 
+  #scale_x_discrete(labels=c("Oral","Injetável")) +
+  theme(legend.position = "none") + theme_bw()
+
+
+```
+
+```{r}
+# numero de dilatações para resolver estonose, pelo os grupos de corticoide oral e injetavel, circuferencial 
+
+ggplot(data=df, 
+       aes(x=as.factor(grupo), y=n_dilatacoes2, fill=as.factor(grupo))) +
+  geom_boxplot(show.legend = F) +
+  labs(y='n', title="Dilatações por Grupo", x="Grupos") + 
+  scale_y_continuous(breaks=seq(from = 0, to = 45, by = 5), limits = c(0, 45)) + 
+  scale_x_discrete(labels=c("Oral","Injetável")) +
+  theme(legend.position = "none") + theme_bw()
+#ggsave("Dilatacoes_por_grupo.png", height=10, width=8, units="cm", dpi=600)
+
+
+#summary_numerico_por_grupo_parametrico("n_dilatacoes1", "grupo")
+#summary_numerico_por_grupo_parametrico("n_dilatacoes2", "grupo")
+
+rbind(summary_numerico_por_grupo_n_parametrico("n_dilatacoes1", "grupo", teste_extra = "T"),
+summary_numerico_por_grupo_n_parametrico("n_dilatacoes2", "grupo", teste_extra = "T")
+) %>% capture()
+##################################
+
+grupo0 = df$n_dilatacoes2[df$grupo == "oral"]
+grupo1 = df$n_dilatacoes2[df$grupo == "injetável"]
+
+
+#Teste de Hipotese - Teste Mann Whitney
+teste_man = wilcox.test(grupo1,grupo0, conf.int = TRUE, paired=T)
+man = retorne_p(teste_man$p.value)
+man
+
+#Estimador Hodges Lehmann
+estimador = as.character(rround(teste_man$estimate,2))
+IC_00 = as.character(rround(teste_man$conf.int[1],2))
+IC_01 = as.character(rround(teste_man$conf.int[2],2))
+hodges_lehmann = paste0(estimador,' (',IC_00,' to ',IC_01,')')
+hodges_lehmann %>% capture()
+
+```
+
+```{r}
+# numero de dilatações para resolver estonose, pelo os grupos de corticoide oral e injetavel, circuferencial 
+df$sep = ifelse(df$resolveu_estenose == "sim", "Resolveu Estenose", "Não Resolveu Estenose")
+
+ggplot(data=df %>% filter(!is.na(sep)), 
+       aes(x=as.factor(grupo), y=n_dilatacoes2, fill=as.factor(grupo))) +
+  geom_boxplot(show.legend = F) + facet_wrap(~ sep) +
+  labs(y='n', title="Dilatações por Grupo", x="Grupos") + 
+  scale_y_continuous(breaks=seq(from = 0, to = 45, by = 5), limits = c(0, 45)) + 
+  scale_x_discrete(labels=c("Oral","Injetável")) +
+  theme(legend.position = "none") + theme_bw()
+#ggsave("Dilatacoes_por_grupo_e_resolucao.png", height=10, width=15, units="cm", dpi=600)
+
+df$sep2 = NA
+df$sep2[df$resolveu_estenose == "sim" & df$grupo == "oral"] = "Grupo: Oral Resolveu Estenose"
+df$sep2[df$resolveu_estenose == "não" & df$grupo == "oral"] = "Grupo: Oral Não Resolveu Estenose"
+df$sep2[df$resolveu_estenose == "sim" & df$grupo == "injetável"] = "Grupo: Injetável Resolveu Estenose"
+df$sep2[df$resolveu_estenose == "não" & df$grupo == "injetável"] = "Grupo: Injetável Não Resolveu Estenose"
+
+table(df$sep2)
+
+rbind(summary_numerico_por_grupo_n_parametrico("n_dilatacoes1", "sep2"),
+summary_numerico_por_grupo_n_parametrico("n_dilatacoes2", "sep2")) %>% capture()
+
+####################
+df$sep2 = NA
+df$sep2[df$resolveu_estenose == "sim" & df$grupo == "oral"] = "1"
+df$sep2[df$resolveu_estenose == "sim" & df$grupo == "injetável"] = "2"
+
+#summary_numerico_por_grupo_n_parametrico("n_dilatacoes2", "sep2")# %>% capture()
+
+grupo0 = df$n_dilatacoes1[df$sep2 == "1"]
+grupo1 = df$n_dilatacoes1[df$sep2 == "2"]
+
+teste_man = wilcox.test(grupo1,grupo0, conf.int = TRUE)
+man = retorne_p(teste_man$p.value)
+
+#Estimador Hodges Lehmann
+estimador = as.character(rround(teste_man$estimate,2))
+IC_00 = as.character(rround(teste_man$conf.int[1],2))
+IC_01 = as.character(rround(teste_man$conf.int[2],2))
+hodges_lehmann = paste0(estimador,' (',IC_00,' to ',IC_01,')')
+cbind(man, hodges_lehmann) %>% capture()
+
+```
+
+
+```{r Analise para prestar atenção}
+# Numero de dilatações para resolver estenose
+summary_numerico_por_grupo_n_parametrico("n_dilatacoes1", "resolveu_estenose")
+
+# Circunferencia vs Estenose (numero de dilatações)
+conti(df, "resolveu_estenose", "circunferencia")
+
+# tumor vs Estenose ("o fato de ter tumor previo, não esta associado com o fator de ter estenose)
+conti(df, "resolveu_estenose", "tumor_primario")
+
+# a presenca de margem comprometida tem a ver com complicação
+conti(df, "margens", "complicacoes")
+
+# o fator da rececassão ser circunfenrial aumenta o risco de ter uma nova perfuração
+conti(df, "circunferencia", "complicacoes")
+
+# o cordidoide injetavel dá mais perfuração ?
+conti(df, "grupo", "complicacoes")
+
+# a localização comprometida teve mais estenose ?
+conti(df, "margens", "estenose")
+
+# depois das 4 semanas, teve diferença da taxa de estenose para os dois grupos ?
+conti(df, "margens", "resolveu_estenose")
+
+df = df_backup
+table(df$grupo, df$resolveu_estenose)
+```
+
+```{r}
+
+teste_hip = retorne_p(wilcox.test(df$n_dilatacoes1~df$resolveu_estenose)$p.value)
+
+
+
+ggplot(df %>% filter(!is.na(resolveu_estenose)), 
+       aes(x=as.factor(resolveu_estenose), y=n_dilatacoes1, fill=as.factor(resolveu_estenose))) + 
+  geom_boxplot(alpha=0.9, show.legend = F) + 
+  labs(x="", title="Resolução Estenose vs N dilatações", y="n",
+       subtitle = paste0("Mann-Whitney (P = ", teste_hip, ")")) + 
+  theme(legend.position="none") +
+  theme_bw() +
+  scale_x_discrete(labels = c("Não resolveu","Resolveu")) +
+  scale_fill_manual(values=c("#DF5474","#118ab2")) +
+  scale_y_continuous(breaks=seq(from = 0, to = 20, by = 2))
+
+
+##ggsave("box_n_dilatacoes1.png", height=10, width=8, units="cm", dpi= 600)
+
+```
+
+```{r}
+df$variavel_entrada = df$circunferencia
+df$variavel_entrada2 = df$resolveu_estenose
+grafi = df %>% filter(!is.na(variavel_entrada) & !is.na(variavel_entrada2)) %>% 
+  group_by(variavel_entrada2, variavel_entrada) %>% 
+  summarise(n = n()) %>% mutate(Freq = round(n/sum(n), 3)) %>% ungroup()
+
+grafi$variavel_entrada2 = ifelse(grafi$variavel_entrada2 == "sim", "Circunferencial", "Não Circunferencial")
+grafi$variavel_entrada = ifelse(grafi$variavel_entrada == "sim", "Resolveu Ok", "Resolveu Não")
+grafi$Freq
+
+ggplot(grafi, aes(x= variavel_entrada2, y= Freq, fill= variavel_entrada)) +
+  geom_bar(stat = "identity",color="black", position = position_dodge()) +
+  theme_stata() + scale_color_stata() + 
+  scale_fill_grey(start = 0.2, end = 0.8) +
+  geom_text(aes(label = paste0(n, " (", Freq*100, "%)")), 
+            vjust = -0.5, size = 3.5, 
+            position = position_dodge(width = 0.9), vjust = -0.5, size = 3.5) +
+  labs(x="", y="%", fill='', title='Resolução Estenose vs Circunferencial') +
+  theme(legend.position = "top") +
+  scale_y_continuous(breaks=seq(from = 0, 
+                                to = 1, 
+                                by = .25), 
+                     limits = c(0, 1))
+##ggsave("operados_vs_motivos_exames.png", height=12, width=17, units="cm", dpi= 600)
+```
+
+
+```{r}
+
+
+grupo0 = df$glicemia_basal#[df$tumor_primario == "não"]
+grupo1 = df$glicemia_pos#[df$tumor_primario == "sim"]
+
+
+#Teste de Hipotese - Teste Mann Whitney
+teste_man = wilcox.test(grupo1,grupo0, conf.int = TRUE, paired=T)
+man = retorne_p(teste_man$p.value)
+man
+
+#Estimador Hodges Lehmann
+estimador = as.character(rround(teste_man$estimate,2))
+IC_00 = as.character(rround(teste_man$conf.int[1],2))
+IC_01 = as.character(rround(teste_man$conf.int[2],2))
+hodges_lehmann = paste0(estimador,' (',IC_00,' to ',IC_01,')')
+hodges_lehmann %>% capture()
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

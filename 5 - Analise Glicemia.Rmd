@@ -1,0 +1,161 @@
+##### GLICEMIA
+
+```{r GLICEMIA ANTES E PÓS}
+# Corticoide oral altera a glicemia ?
+
+library(effsize)
+
+fd <- data.frame(Variable = character(0), Nivel = character(0),
+                 "u GL BASAL" = character(0), "u GL POS" = character(0), 
+                 "t Test" = character(0), "d'Cohen" = character(0), 
+                 "Md GL BASAL" = character(0), "Md GL POS" = character(0), 
+                 "MW" = character(0), "Hod-Leh" = character(0))
+
+colunas = c("grupo", "estenose", "tumor_primario", "complicacoes")
+
+##################################
+nivel = levels(as.factor(df[[coluna]]))
+for (coluna in colunas){
+  nivel = levels(as.factor(df[[coluna]]))
+
+  for (item in 1:length(nivel)){
+    nivel_atual = nivel[item]
+    
+    df_filter = df %>% filter(.data[[coluna]] == nivel_atual)
+    df_filter = df_filter[complete.cases(df_filter$glicemia_basal, df_filter$glicemia_pos), ]
+    
+    grupo0 = df_filter$glicemia_basal
+    grupo1 = df_filter$glicemia_pos
+    
+    #Média
+    u0 = as.character(rround(mean(grupo0, na.rm=T),2))
+    u1 = as.character(rround(mean(grupo1, na.rm=T),2))
+    
+    #Desvio Padrão
+    sd0 = as.character(rround(sd(grupo0, na.rm=T),2))
+    sd1 = as.character(rround(sd(grupo1, na.rm=T),2))
+    #concat
+    u_sd0 = paste0(u0," ± ",sd0)
+    u_sd1 = paste0(u1," ± ",sd1)
+    
+    #Tamanho do efeito (parametrico)
+    d_cohen = cohen.d(grupo1,grupo0)
+    estimador = as.character(rround(d_cohen$estimate[1],2))
+    IC_0 = as.character(rround(d_cohen$conf.int[1],2))
+    IC_1 = as.character(rround(d_cohen$conf.int[2],2))
+    d_cohen = paste0(estimador," (",IC_0," to ",IC_1,")")
+    
+    #Teste de Hipotese - Teste t
+    teste_t = retorne_p(t.test(df_filter$glicemia_basal, df_filter$glicemia_pos, paired=T)$p.value)
+  
+    #Mediana
+    quartis0 = quantile(grupo0, probs=c(.05/2, .5, 1-.05/2))
+    quartis0 = round(quartis0,2)
+    quartis1 = quantile(grupo1, probs=c(.05/2, .5, 1-.05/2))
+    quartis1 = round(quartis1,2)
+    #concat
+    md0 = paste0(quartis0[2],' [',quartis0[1],' - ',quartis0[3],']')
+    md1 = paste0(quartis1[2],' [',quartis1[1],' - ',quartis1[3],']')
+    
+    #Teste de Hipotese - Teste Mann Whitney
+    teste_man = wilcox.test(grupo1,grupo0, conf.int = TRUE, paired = TRUE)
+    man = retorne_p(teste_man$p.value)
+    
+    #Estimador Hodges Lehmann
+    estimador = as.character(rround(teste_man$estimate,2))
+    IC_00 = as.character(rround(teste_man$conf.int[1],2))
+    IC_01 = as.character(rround(teste_man$conf.int[2],2))
+    hodges_lehmann = paste0(estimador,' (',IC_00,' to ',IC_01,')')
+    
+    
+    fd[nrow(fd)+1,] = c(coluna, nivel_atual,
+                        u_sd0, u_sd1,
+                        teste_t, d_cohen,
+                        md0, md1,
+                        man, hodges_lehmann)
+  }  
+}
+
+fd$u.GL.BASAL = NULL
+fd$u.GL.POS = NULL
+fd$t.Test = NULL
+fd$d.Cohen = NULL
+fd$Odds.MW = NULL
+fd$LC = NULL
+
+fd %>% capture()
+
+```
+
+
+```{r}
+fd = data.frame(ID= character(0), 
+                Glicemia= character(0),
+                tempo= character(0),
+                sep=character(0))
+lista = c("glicemia_basal","glicemia_pos")
+coluna2 = "grupo"
+for (coluna in lista){
+  fdzinho = cbind(1:nrow(df), df[[coluna]], coluna, as.character(df[[coluna2]]))
+  fd = rbind(fd, fdzinho)
+}
+
+fd = fd %>% rename("ID" = "V1",
+                   "glicemia" = "V2",
+                   "sep" = "V4")
+
+fd$glicemia = as.numeric(fd$glicemia)
+fd$coluna = factor(fd$coluna, levels = lista)
+fd
+```
+
+
+```{r}
+pasta_grafico = 'C:/Users/gabri/OneDrive/Documentos/Freelances - Medicina - Trabalhos Academicos/Joel - Endoscopia - Dissecação/Graficos/Analise Glicemia/'
+```
+
+
+```{r Representando graficamente a queda da glicemia}
+summary(df$glicemia_basal)
+summary(df$glicemia_pos)
+
+fd$sep = ifelse(fd$sep == "oral", "Oral", "Injetável")
+fd$coluna = ifelse(fd$coluna == "glicemia_basal", "Basal", "Pós")
+
+ggplot() +
+  geom_point(data=fd, aes(x=as.factor(coluna), y=glicemia, color=as.factor(coluna)),
+             alpha=0.5, size=2.5, show.legend = F) + 
+  geom_boxplot(data=fd, aes(x=as.factor(coluna), y=glicemia, color=as.factor(coluna)),
+               alpha=0.5, fill = 'white', show.legend = F) +
+  geom_line(data=fd, aes(x=as.factor(coluna), y=glicemia, color=as.factor(coluna), 
+                         group = ID), show.legend = F, alpha=0.4) +
+  facet_wrap(~ sep) + theme_bw() +
+  labs(y='mg/ld', title="Nivel de Glicemia por Grupos (não circunferencial)", x="") + 
+  scale_y_continuous(breaks=seq(from = 70, to = 135, by = 5), limits = c(70, 135)) + 
+  theme(legend.position = "none")
+
+ggsave(paste0(pasta_grafico,"Agrupamentos_n_circunferencial.png"), height=10, width=15, units="cm", dpi=600)
+```
+
+
+```{r Há diferença estatistica na tendencia de queda ou aumenta}
+colunas = c("grupo", "estenose", "tumor_primario", "complicacoes")
+##################################
+fd = data.frame(Variable = character(0), P_Value = character(0))
+dff = df[complete.cases(df$glicemia_basal, df$glicemia_pos), ]
+
+for (coluna in colunas){
+  nivel = levels(as.factor(df[[coluna]]))
+  
+  df_filter = dff %>% filter(.data[[coluna]] == nivel[1])
+  diff1 = df_filter$glicemia_basal - df_filter$glicemia_pos
+  
+  df_filter = dff %>% filter(.data[[coluna]] == nivel[2])
+  diff2 = df_filter$glicemia_basal - df_filter$glicemia_pos
+  
+  pvalue = retorne_p(wilcox.test(diff1, diff2)$p.value)
+  
+  fd[nrow(fd)+1,] = c(coluna, pvalue)
+}
+fd %>% capture()
+```

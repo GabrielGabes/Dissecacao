@@ -1,0 +1,110 @@
+```{r}
+setwd("C:/Users/gabri/OneDrive/Documentos/Freelances - Medicina - Trabalhos Academicos/Joel - Endoscopia - Dissecação/")
+df <- read_excel("df.xlsx", sheet="Plan1")
+df
+```
+
+```{r Correções no DataFrame}
+
+df$n_dilatacoes[df$Paciente == "Jose Rodrigues do Nascimento"] = NA
+df$n_dilatacoes1[df$Paciente == "Jose Rodrigues do Nascimento"] = NA
+df$n_dilatacoes2[df$Paciente == "Jose Rodrigues do Nascimento"] = NA
+
+```
+
+```{r Excluindo colunas}
+
+#df$id = NULL
+#df$Paciente = NULL
+df$RGHC = NULL
+df$Data = NULL
+df$Primário = NULL
+df$observação_sobre_margens = NULL
+df$complicação = NULL
+df$observação = NULL
+df$n_dilatacoes = NULL
+df$em_bloco = NULL
+df$ob = NULL
+
+#df$estenose_desenv = NULL
+#df$estenose_resol_completa = NULL
+
+```
+
+
+```{r Arrumando Niveis}
+
+df$grupo = factor(df$grupo, levels=c("oral","injetável"))
+
+df$localizacao = factor(df$localizacao, levels=c("distal","médio","proximal"))
+df$localizacao <- str_to_title(df$localizacao)
+
+```
+
+
+
+```{r Criando Novas Variaveis}
+
+df$n_dilatacoes1_resolveu = ifelse(df$resolveu_estenose == "sim", df$n_dilatacoes1, NA)
+df$n_dilatacoes1_nresolveu = ifelse(df$resolveu_estenose == "não", df$n_dilatacoes1, NA)
+
+df$n_dilatacoes2_resolveu = ifelse(df$resolveu_estenose == "sim", df$n_dilatacoes2, NA)
+df$n_dilatacoes2_nresolveu = ifelse(df$resolveu_estenose == "não", df$n_dilatacoes2, NA)
+
+df$indice_CxC_corte55 = ifelse(df$indice_CxC >= 5.5, 1, 0)
+df$indice_CxC_corte53 = ifelse(df$indice_CxC >= 5.32, 1, 0)
+
+```
+
+```{r Criando Variaveis numericas categorizadas}
+
+summary(df$idade)
+
+df$idade_10em10 = NA
+df$idade_10em10[df$idade >= 40 & df$idade < 50] = '1. 40-49'
+df$idade_10em10[df$idade >= 50 & df$idade < 60] = '2. 50-59'
+df$idade_10em10[df$idade >= 60 & df$idade < 70] = '3. 60-69'
+df$idade_10em10[df$idade >= 70 & df$idade < 80] = '4. 70-79'
+df$idade_10em10[df$idade >= 80] = '5. ≥80'
+df$idade_10em10 %>% table()
+
+df$idade_50 = ifelse(df$idade >= 50, '1. ≥50', '0. <50') %>% as.factor()
+df$idade_50 %>% table()
+df$idade_60 = ifelse(df$idade >= 60, '1. ≥60', '0. <60') %>% as.factor()
+df$idade_60 %>% table()
+df$idade_70 = ifelse(df$idade >= 70, '1. ≥70', '0. <70') %>% as.factor()
+df$idade_70 %>% table()
+df$idade_80 = ifelse(df$idade >= 80, '1. ≥80', '0. <80') %>% as.factor()
+df$idade_80 %>% table()
+
+colunas_idade = c('idade','idade_10em10','idade_50','idade_60','idade_70','idade_80')
+
+```
+
+
+```{r Convertendo tipo de colunas}
+for (coluna in names(df)){
+  classe = class(df[[coluna]])
+  if (classe == "character"){
+    df[[coluna]] = as.factor(df[[coluna]])
+  }
+  if (classe == "numeric"){
+    quantidade_niveis = length(levels(as.factor(df[[coluna]])))
+    if (quantidade_niveis <= 3){
+      df[[coluna]] = as.factor(df[[coluna]])
+    }
+    else {
+      df[[coluna]] = as.numeric(df[[coluna]])
+    }
+  }
+}
+
+glimpse(df)
+
+```
+
+```{r}
+nrow(df)
+df_backup = df
+```
+

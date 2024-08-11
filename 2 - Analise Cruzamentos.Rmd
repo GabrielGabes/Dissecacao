@@ -1,0 +1,454 @@
+```{r}
+df = df_backup %>% filter(circunferencia == 'não')
+
+#table(df$estenose)
+
+df$circunferencia = NULL
+
+# for (coluna in names(df)){
+#   classe = df[[coluna]] %>% class()
+#   
+#   if (classe == 'factor'){
+#     df[[coluna]] = df[[coluna]] %>% droplevels()
+#   }
+# }
+
+```
+
+
+```{r}
+names(df)
+```
+ANALISE GRUPOS DE TRATAMENTO
+
+```{r Analise de associação: Grupo}
+coluna_analisada = 'grupo'
+
+colunas = names(df)
+colunas = colunas[!colunas %in% c(coluna_analisada)]
+print(colunas)
+
+tabelona = summary_numerico_por_grupo_n_parametrico(df, "idade", coluna_analisada)[FALSE, ]
+
+for (coluna in colunas){
+  classe = class(df[[coluna]])[1]
+  
+  tryCatch({
+    if (classe == "numeric"){
+      local_erro = 'normalidade'
+      #if (normalidade_por_grupo_criterio(df, coluna, coluna_analisada) == TRUE){
+        local_erro = 'teste1'
+        tabelinha = summary_numerico_por_grupo_n_parametrico(df, coluna, coluna_analisada)
+      # } 
+      # else {
+      #   local_erro = 'teste2'
+      #   tabelinha = summary_numerico_por_grupo_n_parametrico(df, coluna, coluna_analisada)
+      # }
+    } 
+    else if (classe == 'character' | classe == 'factor'){
+      tabelinha = conti(df, coluna_analisada, coluna, "col")
+    }
+    tabelona = rbind(tabelona, tabelinha)
+  }, error = function(e) {
+    print(paste('problema com a coluna:', coluna, '\nlocal do erro:', local_erro))
+  })
+}
+
+colnames(tabelona)[colnames(tabelona) == "Overall"] = paste0("Overall 100% (n=", nrow(df[complete.cases(df[[coluna_analisada]]), ]), ")")
+niveis = levels(as.factor(df[[coluna_analisada]]))
+for (i in 1:length(niveis)){
+  nivel = niveis[i]
+  
+  table_d = table( df[[coluna_analisada]] )
+  prob_table = prop.table( table_d ) %>% round(4) * 100
+  
+  colnames(tabelona)[colnames(tabelona) == nivel] = paste0(nivel, ' ', prob_table[i], "% (n=", table_d[i], ")")
+}
+
+tabelona %>% capture()
+```
+
+
+ANALISE ESTENOSE
+
+```{r Analise univariada: Estenose}
+
+coluna_analisada = 'estenose'
+
+colunas = names(df)
+colunas = colunas[!colunas %in% c(coluna_analisada,"resolveu_estenose","estenose_desenv",'estenose_resol_completa',
+                                  "s4","s8","s12","s16","s20","s24",
+                                  "n_dilatacoes1","n_dilatacoes2",'n_dilatacoes1_nresolveu','n_dilatacoes2_nresolveu','n_dilatacoes1_resolveu','n_dilatacoes2_resolveu',
+                                  "circunferencia")]
+
+tabelona = summary_numerico_por_grupo_n_parametrico(df, "idade", coluna_analisada)[FALSE, ]
+
+for (coluna in colunas){
+  classe = class(df[[coluna]])[1]
+  
+  tryCatch({
+    if (classe == "numeric"){
+      local_erro = 'normalidade'
+      #if (normalidade_por_grupo_criterio(df, coluna, coluna_analisada) == TRUE){
+        local_erro = 'teste1'
+        tabelinha = summary_numerico_por_grupo_n_parametrico(df, coluna, coluna_analisada)
+      # } 
+      # else {
+      #   local_erro = 'teste2'
+      #   tabelinha = summary_numerico_por_grupo_n_parametrico(df, coluna, coluna_analisada)
+      # }
+    } 
+    else if (classe == 'character' | classe == 'factor'){
+      tabelinha = conti(df, coluna_analisada, coluna, "col")
+    }
+    tabelona = rbind(tabelona, tabelinha)
+  }, error = function(e) {
+    print(paste('problema com a coluna:', coluna, '\nlocal do erro:', local_erro))
+  })
+}
+
+colnames(tabelona)[colnames(tabelona) == "Overall"] = paste0("Overall 100% (n=", nrow(df[complete.cases(df[[coluna_analisada]]), ]), ")")
+niveis = levels(as.factor(df[[coluna_analisada]]))
+for (i in 1:length(niveis)){
+  nivel = niveis[i]
+  
+  table_d = table( df[[coluna_analisada]] )
+  prob_table = prop.table( table_d ) %>% round(4) * 100
+  
+  colnames(tabelona)[colnames(tabelona) == nivel] = paste0(nivel, ' ', prob_table[i], "% (n=", table_d[i], ")")
+}
+
+tabelona %>% capture()
+####################################################################################
+
+tabelona = analise_mod(glm(df[[coluna_analisada]]~df[['idade']], family='binomial'))
+
+tabelona$indice = NA
+tabelona = tabelona[, c("indice", setdiff(names(tabelona), "indice"))]
+tabelona = tabelona[FALSE, ]
+
+for (coluna in colunas){
+  tabelinha = analise_mod(glm(df[[coluna_analisada]]~df[[coluna]], family='binomial'))
+  
+  tabelinha$indice = row.names(tabelinha)
+  tabelinha = tabelinha[, c("indice", setdiff(names(tabelinha), "indice"))]
+  
+  row.names(tabelinha) = 1:nrow(tabelinha)
+  
+  if (class(df[[coluna]]) != "numeric"){
+    tabelinha = rbind(NA,NA, tabelinha) #adicionando linha
+    tabelinha[["indice"]] = c(coluna,levels(as.factor(df[[coluna]])))
+  }
+  else{
+    tabelinha[["indice"]] = coluna
+  }
+  tabelona = rbind(tabelona, tabelinha)
+}
+tabelona$`Pr(>|z|)` = sapply(tabelona$`Pr(>|z|)`, function(x) ifelse(is.na(x), NA, retorne_p(x)))
+tabelona$OR = paste0( tabelona$OR, ' (', tabelona$`2.5 %`, ' - ', tabelona$`97.5 %`, ')' )
+tabelona$OR[tabelona$OR == 'NA (NA - NA)'] = NA
+tabelona$`2.5 %` = NULL
+tabelona$`97.5 %` = NULL
+tabelona %>% capture()
+
+```
+
+
+```{r RESOLUÇÃO DE ESTENOSE}
+
+coluna_analisada = 'resolveu_estenose'
+
+colunas = names(df)
+colunas = colunas[!colunas %in% c(coluna_analisada,"estenose","circunferencia","localizacao",'estenose_resol_completa',
+                                  'n_dilatacoes1_nresolveu','n_dilatacoes2_nresolveu','n_dilatacoes1_resolveu','n_dilatacoes2_resolveu')]
+print(colunas)
+
+tabelona = summary_numerico_por_grupo_n_parametrico(df, "idade", coluna_analisada)[FALSE, ]
+
+for (coluna in colunas){
+  classe = class(df[[coluna]])[1]
+  
+  tryCatch({
+    if (classe == "numeric"){
+      local_erro = 'normalidade'
+      #if (normalidade_por_grupo_criterio(df, coluna, coluna_analisada) == TRUE){
+        local_erro = 'teste1'
+        tabelinha = summary_numerico_por_grupo_n_parametrico(df, coluna, coluna_analisada)
+      # } 
+      # else {
+      #   local_erro = 'teste2'
+      #   tabelinha = summary_numerico_por_grupo_n_parametrico(df, coluna, coluna_analisada)
+      # }
+    } 
+    else if (classe == 'character' | classe == 'factor'){
+      tabelinha = conti(df, coluna_analisada, coluna, "col")
+    }
+    tabelona = rbind(tabelona, tabelinha)
+  }, error = function(e) {
+    print(paste('problema com a coluna:', coluna, '\nlocal do erro:', local_erro))
+  })
+}
+
+colnames(tabelona)[colnames(tabelona) == "Overall"] = paste0("Overall 100% (n=", nrow(df[complete.cases(df[[coluna_analisada]]), ]), ")")
+niveis = levels(as.factor(df[[coluna_analisada]]))
+for (i in 1:length(niveis)){
+  nivel = niveis[i]
+  
+  table_d = table( df[[coluna_analisada]] )
+  prob_table = prop.table( table_d ) %>% round(4) * 100
+  
+  colnames(tabelona)[colnames(tabelona) == nivel] = paste0(nivel, ' ', prob_table[i], "% (n=", table_d[i], ")")
+}
+
+tabelona %>% capture()
+####################################################################################
+
+tabelona = analise_mod(glm(df[[coluna_analisada]]~df[['idade']], family='binomial'))
+
+tabelona$indice = NA
+tabelona = tabelona[, c("indice", setdiff(names(tabelona), "indice"))]
+tabelona = tabelona[FALSE, ]
+
+for (coluna in colunas){
+  tryCatch({
+    tabelinha = analise_mod(glm(df[[coluna_analisada]]~df[[coluna]], family='binomial'))
+  
+    tabelinha$indice = row.names(tabelinha)
+    tabelinha = tabelinha[, c("indice", setdiff(names(tabelinha), "indice"))]
+    
+    row.names(tabelinha) = 1:nrow(tabelinha)
+    
+    if (class(df[[coluna]]) != "numeric"){
+      tabelinha = rbind(NA,NA, tabelinha) #adicionando linha
+      tabelinha[["indice"]] = c(coluna,levels(as.factor(df[[coluna]])))
+    } else{
+      tabelinha[["indice"]] = coluna
+    }
+    tabelona = rbind(tabelona, tabelinha)
+    
+  }, error = function(e) {
+    print(paste('problema com a coluna:', coluna))#, '\nlocal do erro:', local_erro))
+  })
+}
+tabelona$`Pr(>|z|)` = sapply(tabelona$`Pr(>|z|)`, function(x) ifelse(is.na(x), NA, retorne_p(x)))
+tabelona$OR = paste0( tabelona$OR, ' (', tabelona$`2.5 %`, ' - ', tabelona$`97.5 %`, ')' )
+tabelona$OR[tabelona$OR == 'NA (NA - NA)'] = NA
+tabelona$`2.5 %` = NULL
+tabelona$`97.5 %` = NULL
+tabelona %>% capture()
+
+```
+
+
+```{r}
+
+coluna_analisada = 'tumor_primario'
+
+colunas = names(df)
+colunas = colunas[!colunas %in% c(coluna_analisada,"em_bloco","circunferencia")]
+print(colunas)
+
+tabelona = summary_numerico_por_grupo_n_parametrico(df, "idade", coluna_analisada)[FALSE, ]
+
+for (coluna in colunas){
+  classe = class(df[[coluna]])[1]
+  
+  tryCatch({
+    if (classe == "numeric"){
+      local_erro = 'normalidade'
+      #if (normalidade_por_grupo_criterio(df, coluna, coluna_analisada) == TRUE){
+        local_erro = 'teste1'
+        tabelinha = summary_numerico_por_grupo_n_parametrico(df, coluna, coluna_analisada)
+      # } 
+      # else {
+      #   local_erro = 'teste2'
+      #   tabelinha = summary_numerico_por_grupo_n_parametrico(df, coluna, coluna_analisada)
+      # }
+    } 
+    else if (classe == 'character' | classe == 'factor'){
+      tabelinha = conti(df, coluna_analisada, coluna, "col")
+    }
+    tabelona = rbind(tabelona, tabelinha)
+  }, error = function(e) {
+    print(paste('problema com a coluna:', coluna, '\nlocal do erro:', local_erro))
+  })
+}
+
+colnames(tabelona)[colnames(tabelona) == "Overall"] = paste0("Overall 100% (n=", nrow(df[complete.cases(df[[coluna_analisada]]), ]), ")")
+niveis = levels(as.factor(df[[coluna_analisada]]))
+for (i in 1:length(niveis)){
+  nivel = niveis[i]
+  
+  table_d = table( df[[coluna_analisada]] )
+  prob_table = prop.table( table_d ) %>% round(4) * 100
+  
+  colnames(tabelona)[colnames(tabelona) == nivel] = paste0(nivel, ' ', prob_table[i], "% (n=", table_d[i], ")")
+}
+
+tabelona %>% capture()
+####################################################################################
+
+tabelona = analise_mod(glm(df[[coluna_analisada]]~df[['idade']], family='binomial'))
+
+tabelona$indice = NA
+tabelona = tabelona[, c("indice", setdiff(names(tabelona), "indice"))]
+tabelona = tabelona[FALSE, ]
+
+for (coluna in colunas){
+  tryCatch({
+    tabelinha = analise_mod(glm(df[[coluna_analisada]]~df[[coluna]], family='binomial'))
+  
+    tabelinha$indice = row.names(tabelinha)
+    tabelinha = tabelinha[, c("indice", setdiff(names(tabelinha), "indice"))]
+    
+    row.names(tabelinha) = 1:nrow(tabelinha)
+    
+    if (class(df[[coluna]]) != "numeric"){
+      tabelinha = rbind(NA,NA, tabelinha) #adicionando linha
+      tabelinha[["indice"]] = c(coluna,levels(as.factor(df[[coluna]])))
+    } else{
+      tabelinha[["indice"]] = coluna
+    }
+    tabelona = rbind(tabelona, tabelinha)
+    
+  }, error = function(e) {
+    print(paste('problema com a coluna:', coluna))#, '\nlocal do erro:', local_erro))
+  })
+}
+tabelona$`Pr(>|z|)` = sapply(tabelona$`Pr(>|z|)`, function(x) ifelse(is.na(x), NA, retorne_p(x)))
+tabelona$OR = paste0( tabelona$OR, ' (', tabelona$`2.5 %`, ' - ', tabelona$`97.5 %`, ')' )
+tabelona$OR[tabelona$OR == 'NA (NA - NA)'] = NA
+tabelona$`2.5 %` = NULL
+tabelona$`97.5 %` = NULL
+tabelona %>% capture()
+
+```
+
+
+```{r}
+
+coluna_analisada = 'complicacoes'
+
+colunas = names(df)
+colunas = colunas[!colunas %in% c(coluna_analisada,"em_bloco","circunferencia")]
+print(colunas)
+
+tabelona = summary_numerico_por_grupo_n_parametrico(df, "idade", coluna_analisada)[FALSE, ]
+
+for (coluna in colunas){
+  classe = class(df[[coluna]])[1]
+  
+  tryCatch({
+    if (classe == "numeric"){
+      local_erro = 'normalidade'
+      #if (normalidade_por_grupo_criterio(df, coluna, coluna_analisada) == TRUE){
+        local_erro = 'teste1'
+        tabelinha = summary_numerico_por_grupo_n_parametrico(df, coluna, coluna_analisada)
+      # } 
+      # else {
+      #   local_erro = 'teste2'
+      #   tabelinha = summary_numerico_por_grupo_n_parametrico(df, coluna, coluna_analisada)
+      # }
+    } 
+    else if (classe == 'character' | classe == 'factor'){
+      tabelinha = conti(df, coluna_analisada, coluna, "col")
+    }
+    tabelona = rbind(tabelona, tabelinha)
+  }, error = function(e) {
+    print(paste('problema com a coluna:', coluna, '\nlocal do erro:', local_erro))
+  })
+}
+
+colnames(tabelona)[colnames(tabelona) == "Overall"] = paste0("Overall 100% (n=", nrow(df[complete.cases(df[[coluna_analisada]]), ]), ")")
+niveis = levels(as.factor(df[[coluna_analisada]]))
+for (i in 1:length(niveis)){
+  nivel = niveis[i]
+  
+  table_d = table( df[[coluna_analisada]] )
+  prob_table = prop.table( table_d ) %>% round(4) * 100
+  
+  colnames(tabelona)[colnames(tabelona) == nivel] = paste0(nivel, ' ', prob_table[i], "% (n=", table_d[i], ")")
+}
+
+tabelona %>% capture()
+####################################################################################
+
+tabelona = analise_mod(glm(df[[coluna_analisada]]~df[['idade']], family='binomial'))
+
+tabelona$indice = NA
+tabelona = tabelona[, c("indice", setdiff(names(tabelona), "indice"))]
+tabelona = tabelona[FALSE, ]
+
+for (coluna in colunas){
+  tryCatch({
+    tabelinha = analise_mod(glm(df[[coluna_analisada]]~df[[coluna]], family='binomial'))
+  
+    tabelinha$indice = row.names(tabelinha)
+    tabelinha = tabelinha[, c("indice", setdiff(names(tabelinha), "indice"))]
+    
+    row.names(tabelinha) = 1:nrow(tabelinha)
+    
+    if (class(df[[coluna]]) != "numeric"){
+      tabelinha = rbind(NA,NA, tabelinha) #adicionando linha
+      tabelinha[["indice"]] = c(coluna,levels(as.factor(df[[coluna]])))
+    } else{
+      tabelinha[["indice"]] = coluna
+    }
+    tabelona = rbind(tabelona, tabelinha)
+    
+  }, error = function(e) {
+    print(paste('problema com a coluna:', coluna))#, '\nlocal do erro:', local_erro))
+  })
+}
+tabelona$`Pr(>|z|)` = sapply(tabelona$`Pr(>|z|)`, function(x) ifelse(is.na(x), NA, retorne_p(x)))
+tabelona$OR = paste0( tabelona$OR, ' (', tabelona$`2.5 %`, ' - ', tabelona$`97.5 %`, ')' )
+tabelona$OR[tabelona$OR == 'NA (NA - NA)'] = NA
+tabelona$`2.5 %` = NULL
+tabelona$`97.5 %` = NULL
+tabelona %>% capture()
+
+```
+
+
+```{r}
+
+coluna_analisada = 'estenose'
+
+colunas = names(df)
+colunas = colunas[!colunas %in% c(coluna_analisada,"resolveu_estenose","estenose_desenv",'estenose_resol_completa',
+                                  "s4","s8","s12","s16","s20","s24",
+                                  "n_dilatacoes1","n_dilatacoes2",'n_dilatacoes1_nresolveu','n_dilatacoes2_nresolveu','n_dilatacoes1_resolveu','n_dilatacoes2_resolveu',
+                                  "circunferencia")]
+
+tabelona = cont(df, 'estenose') %>% tabelinha_ajust()
+tabelona = tabelona[FALSE, ]
+
+for (coluna in colunas){
+  classe = class(df[[coluna]])[1]
+  print(coluna)
+  if (classe == "numeric"){
+    tabelinha = summary_numerico_n_parametrico(df, coluna) %>% tabelinha_ajust()
+  } else {
+    tabelinha = cont(df, coluna) %>% tabelinha_ajust()
+  }
+  tabelona = rbind(tabelona, tabelinha)
+}
+
+tabelona %>% capture()
+
+
+```
+
+
+```{r}
+View(df)
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+

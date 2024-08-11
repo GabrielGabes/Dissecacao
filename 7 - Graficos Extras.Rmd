@@ -1,0 +1,68 @@
+```{r}
+
+teste_hip = retorne_p(wilcox.test(df$n_dilatacoes1~df$resolveu_estenose)$p.value)
+
+ggplot(df %>% filter(!is.na(resolveu_estenose)), 
+       aes(x=as.factor(resolveu_estenose), y=n_dilatacoes1, fill=as.factor(resolveu_estenose))) + 
+  geom_boxplot(alpha=0.9, show.legend = F) + 
+  labs(x="", title="Resolução Estenose vs N dilatações", y="n",
+       subtitle = paste0("Mann-Whitney (P = ", teste_hip, ")")) + 
+  theme(legend.position="none") +
+  theme_bw() +
+  scale_x_discrete(labels = c("Não resolveu","Resolveu")) +
+  scale_fill_manual(values=c("#DF5474","#118ab2")) +
+  scale_y_continuous(breaks=seq(from = 0, to = 20, by = 2))
+
+##ggsave("box_n_dilatacoes1.png", height=10, width=8, units="cm", dpi= 600)
+
+```
+
+```{r}
+
+df$variavel_entrada = df$circunferencia
+df$variavel_entrada2 = df$resolveu_estenose
+grafi = df %>% filter(!is.na(variavel_entrada) & !is.na(variavel_entrada2)) %>% 
+  group_by(variavel_entrada2, variavel_entrada) %>% 
+  summarise(n = n()) %>% mutate(Freq = round(n/sum(n), 3)) %>% ungroup()
+
+grafi$variavel_entrada2 = ifelse(grafi$variavel_entrada2 == "sim", "Circunferencial", "Não Circunferencial")
+grafi$variavel_entrada = ifelse(grafi$variavel_entrada == "sim", "Resolveu Ok", "Resolveu Não")
+grafi$Freq
+
+ggplot(grafi, aes(x= variavel_entrada2, y= Freq, fill= variavel_entrada)) +
+  geom_bar(stat = "identity",color="black", position = position_dodge()) +
+  theme_stata() + scale_color_stata() + 
+  scale_fill_grey(start = 0.2, end = 0.8) +
+  geom_text(aes(label = paste0(n, " (", Freq*100, "%)")), 
+            vjust = -0.5, size = 3.5, 
+            position = position_dodge(width = 0.9), vjust = -0.5, size = 3.5) +
+  labs(x="", y="%", fill='', title='Resolução Estenose vs Circunferencial') +
+  theme(legend.position = "top") +
+  scale_y_continuous(breaks=seq(from = 0, 
+                                to = 1, 
+                                by = .25), 
+                     limits = c(0, 1))
+##ggsave("operados_vs_motivos_exames.png", height=12, width=17, units="cm", dpi= 600)
+
+```
+
+
+```{r}
+
+grupo0 = df$glicemia_basal#[df$tumor_primario == "não"]
+grupo1 = df$glicemia_pos#[df$tumor_primario == "sim"]
+
+#Teste de Hipotese - Teste Mann Whitney
+teste_man = wilcox.test(grupo1,grupo0, conf.int = TRUE, paired=T)
+man = retorne_p(teste_man$p.value)
+man
+
+#Estimador Hodges Lehmann
+estimador = as.character(rround(teste_man$estimate,2))
+IC_00 = as.character(rround(teste_man$conf.int[1],2))
+IC_01 = as.character(rround(teste_man$conf.int[2],2))
+hodges_lehmann = paste0(estimador,' (',IC_00,' to ',IC_01,')')
+hodges_lehmann %>% capture()
+
+```
+

@@ -1,0 +1,156 @@
+#### ANALISE DAS DILATAÇÕES
+
+```{r}
+colunas = c()
+
+for (coluna in names(df)){
+  classe = df[[coluna]] %>% class()
+  qtd_levels = df[[coluna]] %>% as.factor() %>% levels() %>% length()
+  
+  if (classe != 'numeric'){
+    if (qtd_levels == 2){
+      colunas = append(colunas, coluna)
+    }
+  }
+}
+
+colunas
+```
+
+
+```{r Analise Dilatações}
+colunas = colunas[which(!colunas %in% c("s4","s8","s12","s16","s20","s24",
+                                        "estenose","resolveu_estenose"))] #,'estenose_resol_completa','estenose_desenv'
+
+
+tabelona = summary_numerico_por_grupo_n_parametrico(df, "idade", "grupo")[FALSE, ]
+
+for (coluna in colunas){
+  classe = class(df[[coluna]])
+  if (classe == "factor"){
+    print(coluna)
+    tabelinha1 = summary_numerico_por_grupo_n_parametrico(df, "n_dilatacoes1", coluna, teste_extra = "T")
+    tabelinha2 = summary_numerico_por_grupo_n_parametrico(df, "n_dilatacoes2", coluna, teste_extra = "T")
+    
+    tabelinha = rbind(tabelinha1, tabelinha2)
+    tabelinha$Variable = paste0(coluna, "-> ", tabelinha$Variable)
+    
+    for (nivel in c("não", "sim")){
+      df = df %>% filter(resolveu_estenose == nivel)
+      tabelinha1 = summary_numerico_por_grupo_n_parametrico(df, "n_dilatacoes1", coluna, teste_extra = "T")
+      tabelinha2 = summary_numerico_por_grupo_n_parametrico(df, "n_dilatacoes2", coluna, teste_extra = "T")
+      
+      tabelinha_2 = rbind(tabelinha1, tabelinha2)
+      tabelinha_2$Variable = paste0(coluna, "-> ", nivel, "-> ", tabelinha_2$Variable)
+      tabelinha = rbind(tabelinha, tabelinha_2)
+      
+      df = df_backup
+    }
+    tabelinha %>% capture()
+  }}
+
+```
+
+```{r}
+pasta_grafico = 'C:/Users/gabri/OneDrive/Documentos/Freelances - Medicina - Trabalhos Academicos/Joel - Endoscopia - Dissecação/Graficos/Analise Dilatacoes/'
+```
+
+
+```{r}
+df$sep = ifelse(df$resolveu_estenose == "sim", "Resolveu Estenose", "Não Resolveu Estenose")
+
+df_filter = df %>% filter(complete.cases(sep, localizacao, n_dilatacoes2))
+
+ggplot(df_filter, aes(x=as.factor(localizacao), y=n_dilatacoes2, fill=as.factor(localizacao))) +
+  geom_boxplot(show.legend = F) + facet_wrap(~ sep) +
+  labs(y='n', title="Dilatações por Grupo", x="Grupos") + 
+  scale_y_continuous(breaks=seq(from = 0, to = 45, by = 5), limits = c(0, 45)) + 
+  #scale_x_discrete(labels=c("Oral","Injetável")) +
+  theme(legend.position = "none") + theme_bw()
+
+ggsave(paste0(pasta_grafico,"Agrupamentos_n_circunferencial.png"), height=10, width=15, units="cm", dpi=600)
+```
+
+```{r}
+# numero de dilatações para resolver estonose, pelo os grupos de corticoide oral e injetavel, circuferencial 
+
+ggplot(data=df, 
+       aes(x=as.factor(grupo), y=n_dilatacoes2, fill=as.factor(grupo))) +
+  geom_boxplot(show.legend = F) +
+  labs(y='n', title="Dilatações por Grupo", x="Grupos") + 
+  scale_y_continuous(breaks=seq(from = 0, to = 45, by = 5), limits = c(0, 45)) + 
+  scale_x_discrete(labels=c("Oral","Injetável")) +
+  theme(legend.position = "none") + theme_bw()
+ggsave(paste0(pasta_grafico,"Dilatacoes_por_grupo.png"), height=10, width=8, units="cm", dpi=600)
+
+summary_numerico_por_grupo_parametrico(df, "n_dilatacoes1", "grupo")
+summary_numerico_por_grupo_parametrico(df, "n_dilatacoes2", "grupo")
+
+rbind(summary_numerico_por_grupo_n_parametrico(df, "n_dilatacoes1", "grupo", teste_extra = "T"),
+summary_numerico_por_grupo_n_parametrico(df, "n_dilatacoes2", "grupo", teste_extra = "T")
+) %>% capture()
+##################################
+
+grupo0 = df$n_dilatacoes2[df$grupo == "oral"]
+grupo1 = df$n_dilatacoes2[df$grupo == "injetável"]
+
+
+#Teste de Hipotese - Teste Mann Whitney
+teste_man = wilcox.test(grupo1,grupo0, conf.int = TRUE, paired=T)
+man = retorne_p(teste_man$p.value)
+man
+
+#Estimador Hodges Lehmann
+estimador = as.character(rround(teste_man$estimate,2))
+IC_00 = as.character(rround(teste_man$conf.int[1],2))
+IC_01 = as.character(rround(teste_man$conf.int[2],2))
+hodges_lehmann = paste0(estimador,' (',IC_00,' to ',IC_01,')')
+hodges_lehmann %>% capture()
+
+```
+
+```{r}
+# numero de dilatações para resolver estonose, pelo os grupos de corticoide oral e injetavel, circuferencial 
+df$sep = ifelse(df$resolveu_estenose == "sim", "Resolveu Estenose", "Não Resolveu Estenose")
+
+ggplot(data=df %>% filter(!is.na(sep)), 
+       aes(x=as.factor(grupo), y=n_dilatacoes2, fill=as.factor(grupo))) +
+  geom_boxplot(show.legend = F) + facet_wrap(~ sep) +
+  labs(y='n', title="Dilatações por Grupo", x="Grupos") + 
+  scale_y_continuous(breaks=seq(from = 0, to = 45, by = 5), limits = c(0, 45)) + 
+  scale_x_discrete(labels=c("Oral","Injetável")) +
+  theme(legend.position = "none") + theme_bw()
+ggsave(paste0(pasta_grafico,"Dilatacoes_por_grupo_e_resolucao.png"), height=10, width=15, units="cm", dpi=600)
+
+df$sep2 = NA
+df$sep2[df$resolveu_estenose == "sim" & df$grupo == "oral"] = "Grupo: Oral Resolveu Estenose"
+df$sep2[df$resolveu_estenose == "não" & df$grupo == "oral"] = "Grupo: Oral Não Resolveu Estenose"
+df$sep2[df$resolveu_estenose == "sim" & df$grupo == "injetável"] = "Grupo: Injetável Resolveu Estenose"
+df$sep2[df$resolveu_estenose == "não" & df$grupo == "injetável"] = "Grupo: Injetável Não Resolveu Estenose"
+
+table(df$sep2)
+
+rbind(summary_numerico_por_grupo_n_parametrico(df, "n_dilatacoes1", "sep2"),
+summary_numerico_por_grupo_n_parametrico(df, "n_dilatacoes2", "sep2")) %>% capture()
+
+####################
+df$sep2 = NA
+df$sep2[df$resolveu_estenose == "sim" & df$grupo == "oral"] = "1"
+df$sep2[df$resolveu_estenose == "sim" & df$grupo == "injetável"] = "2"
+
+summary_numerico_por_grupo_n_parametrico(df, "n_dilatacoes2", "sep2")# %>% capture()
+
+grupo0 = df$n_dilatacoes1[df$sep2 == "1"]
+grupo1 = df$n_dilatacoes1[df$sep2 == "2"]
+
+teste_man = wilcox.test(grupo1,grupo0, conf.int = TRUE)
+man = retorne_p(teste_man$p.value)
+
+#Estimador Hodges Lehmann
+estimador = as.character(rround(teste_man$estimate,2))
+IC_00 = as.character(rround(teste_man$conf.int[1],2))
+IC_01 = as.character(rround(teste_man$conf.int[2],2))
+hodges_lehmann = paste0(estimador,' (',IC_00,' to ',IC_01,')')
+cbind(man, hodges_lehmann) %>% capture()
+
+```

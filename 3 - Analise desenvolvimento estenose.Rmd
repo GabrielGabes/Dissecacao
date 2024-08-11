@@ -1,0 +1,86 @@
+DESENVOLVIMENTO DE ESTENOSE CONFORME O TEMPO
+
+```{r Pacote}
+library(ggalluvial)
+```
+
+```{r}
+pasta_grafico = 'C:/Users/gabri/OneDrive/Documentos/Freelances - Medicina - Trabalhos Academicos/Joel - Endoscopia - Dissecação/Graficos/Desenvolvimento Estenose/'
+```
+
+
+```{r GERAL}
+
+grafi = df %>% 
+  filter(complete.cases(s4, s8, s12, s16, s20, s24)) %>% 
+  group_by(s4, s8, s12, s16, s20, s24) %>% 
+  summarise(n = n()) %>% mutate(Freq = round(n/sum(n), 3)) %>% ungroup()
+maximo = max(grafi$n)
+
+ggplot(data = grafi,
+       aes(axis1=s4, axis2=s8, axis3=s12, axis4=s16, axis5=s20, axis6=s24,
+           y = n)) +
+  scale_x_discrete(limits = c("4º Semana", "8º Semana", "12º Semana", 
+                              "16º Semana", "20º Semana", "24º Semana\nÚltima"), expand = c(.2, .05)) +
+  geom_alluvium(aes(fill = s24)) +
+  geom_stratum() +
+  geom_text(stat = "stratum", aes(label = after_stat(stratum))) +
+  theme_minimal() + theme(legend.position = "bottom") +
+  labs(title="Presença de Estenose Geral", x="Tempo", y="Frequência", fill="Resolução\nEstenose") + 
+  scale_y_continuous(breaks=seq(from = 0, 
+                                to = nrow(df %>% filter(complete.cases(s4, s8, s12, s16, s20, s24))), 
+                                by = 2))
+
+ggsave(paste0(pasta_grafico,"aluviais_geral.jpg"), height=12, width=18, units="cm", dpi= 600)
+
+```
+
+```{r GRUPO ORAL}
+
+grafi = df %>% filter(grupo == "oral") %>% 
+  filter(complete.cases(s4, s8, s12, s16, s20, s24)) %>% 
+  group_by(s4, s8, s12, s16, s20, s24) %>% 
+  summarise(n = n()) %>% mutate(Freq = round(n/sum(n), 3)) %>% ungroup()
+maximo = max(grafi$n)
+
+ggplot(data = grafi,
+       aes(axis1=s4, axis2=s8, axis3=s12, axis4=s16, axis5=s20, axis6=s24,
+           y = n)) +
+  scale_x_discrete(limits = c("4º Semana", "8º Semana", "12º Semana", 
+                              "16º Semana", "20º Semana", "24º Semana\nÚltima"), expand = c(.2, .05)) +
+  geom_alluvium(aes(fill = s24)) +
+  geom_stratum() +
+  geom_text(stat = "stratum", aes(label = after_stat(stratum))) +
+  theme_minimal() + theme(legend.position = "bottom") +
+  labs(title="Presença de Estenose no grupo Oral", x="Tempo", 
+       y="Frequência", fill="Resolução\nEstenose") + 
+  scale_y_continuous(breaks=seq(from = 0, to = table(df$grupo)[1], by = 1))
+
+ggsave(paste0(pasta_grafico,"aluviais_oral.jpg"), height=12, width=18, units="cm", dpi= 600)
+
+```
+
+```{r GRUPO INJETAVEL}
+
+grafi = df %>% filter(grupo == "injetável") %>% 
+  filter(complete.cases(s4, s8, s12, s16, s20, s24)) %>% 
+  group_by(s4, s8, s12, s16, s20, s24) %>% 
+  summarise(n = n()) %>% mutate(Freq = round(n/sum(n), 3)) %>% ungroup()
+maximo = max(grafi$n)
+
+ggplot(data = grafi,
+       aes(axis1=s4, axis2=s8, axis3=s12, axis4=s16, axis5=s20, axis6=s24,
+           y = n)) +
+  scale_x_discrete(limits = c("4º Semana", "8º Semana", "12º Semana", 
+                              "16º Semana", "20º Semana", "24º Semana\nÚltima"), expand = c(.2, .05)) +
+  geom_alluvium(aes(fill = s24)) +
+  geom_stratum() +
+  geom_text(stat = "stratum", aes(label = after_stat(stratum))) +
+  theme_minimal() + theme(legend.position = "bottom") +
+  labs(title="Presença de Estenose no grupo Injetável", x="Tempo", 
+       y="Frequência", fill="Resolução\nEstenose") + 
+  scale_y_continuous(breaks=seq(from = 0, to = table(df$grupo)[2], by = 1))
+
+ggsave(paste0(pasta_grafico,"aluviais_injetavel.jpg"), height=12, width=18, units="cm", dpi= 600)
+```
+
